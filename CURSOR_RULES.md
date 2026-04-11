@@ -1,0 +1,8 @@
+- Нельзя смешивать бизнес-логику между модулями
+- Каждый module имеет: models, service, repository, router
+- API слой не содержит бизнес-логики
+- RAG логика только в modules/rag
+- Vector DB доступ только через vectordb module
+- LLM вызывается только через infrastructure/llm
+- ingestion не знает про API
+- evaluation (ragas) не участвует в runtime
