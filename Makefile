@@ -1,17 +1,19 @@
 SHELL := /bin/bash
 
-.PHONY: help up down logs ps backend frontend example eval
+.PHONY: help up down logs ps backend frontend example eval migrate migration
 
 help:
 	@echo "Available commands:"
-	@echo "  make up        - run full stack via docker compose"
-	@echo "  make down      - stop and remove containers"
-	@echo "  make logs      - tail compose logs"
-	@echo "  make ps        - show running services"
-	@echo "  make backend   - run backend locally (uvicorn)"
-	@echo "  make frontend  - run main frontend locally"
-	@echo "  make example   - run examples/cyber_threat_ui locally"
-	@echo "  make eval      - run offline evaluation script (requires --dataset)"
+	@echo "  make up              - run full stack via docker compose"
+	@echo "  make down            - stop and remove containers"
+	@echo "  make logs            - tail compose logs"
+	@echo "  make ps              - show running services"
+	@echo "  make backend         - run backend locally (uvicorn)"
+	@echo "  make frontend        - run main frontend locally"
+	@echo "  make example         - run examples/cyber_threat_ui locally"
+	@echo "  make eval            - run offline evaluation script"
+	@echo "  make migrate         - apply pending alembic migrations"
+	@echo "  make migration m=msg - create new migration (autogenerate)"
 
 up:
 	docker compose up --build -d
@@ -36,3 +38,9 @@ example:
 
 eval:
 	@echo "Usage: python -m evaluation.ragas.run_eval --dataset path/to/dataset.jsonl"
+
+migrate:
+	cd backend && alembic upgrade head
+
+migration:
+	cd backend && alembic revision --autogenerate -m "$(m)"

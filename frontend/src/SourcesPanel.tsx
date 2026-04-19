@@ -23,7 +23,7 @@ export default function SourcesPanel({ projectId }: Props) {
     try {
       setSources(await api.listSources(projectId));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load sources");
+      setError(err instanceof Error ? err.message : "Не удалось загрузить источники");
     } finally {
       setLoading(false);
     }
@@ -45,7 +45,7 @@ export default function SourcesPanel({ projectId }: Props) {
       setChatId("");
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to add source");
+      setError(err instanceof Error ? err.message : "Не удалось добавить источник");
     } finally {
       setAdding(false);
     }
@@ -56,22 +56,25 @@ export default function SourcesPanel({ projectId }: Props) {
       await api.deleteSource(id);
       setSources((prev) => prev.filter((s) => s.id !== id));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Delete failed");
+      setError(err instanceof Error ? err.message : "Не удалось удалить");
     }
   }
 
   return (
     <div className="sources-panel">
       <div className="sources-header">
-        <h3>Data Sources</h3>
+        <h3>Источники данных</h3>
       </div>
 
       {error && <p className="src-error">{error}</p>}
 
       {loading ? (
-        <p className="muted">Loading sources...</p>
+        <p className="muted">Загрузка источников…</p>
       ) : sources.length === 0 ? (
-        <p className="muted">No sources yet. Add one below, then use the &quot;Refresh knowledge base&quot; button in the header.</p>
+        <p className="muted">
+          Источников пока нет. Добавьте веб-страницу или канал Telegram ниже, затем нажмите
+          «Обновить базу знаний», чтобы загрузить данные.
+        </p>
       ) : (
         <ul className="source-list">
           {sources.map((s) => (
@@ -79,7 +82,7 @@ export default function SourcesPanel({ projectId }: Props) {
               <span className={`badge ${s.source_type}`}>{s.source_type}</span>
               <span className="source-title">{s.title}</span>
               <span className="source-uri">{s.uri || s.external_id || ""}</span>
-              <button className="btn-icon" onClick={() => handleDelete(s.id)} title="Remove">
+              <button className="btn-icon" onClick={() => handleDelete(s.id)} title="Удалить источник">
                 ×
               </button>
             </li>
@@ -90,7 +93,7 @@ export default function SourcesPanel({ projectId }: Props) {
       <form className="add-source-form" onSubmit={handleAdd}>
         <div className="tab-switch">
           <button type="button" className={tab === "web" ? "active" : ""} onClick={() => setTab("web")}>
-            Web URL
+            Веб-URL
           </button>
           <button type="button" className={tab === "telegram" ? "active" : ""} onClick={() => setTab("telegram")}>
             Telegram
@@ -98,7 +101,7 @@ export default function SourcesPanel({ projectId }: Props) {
         </div>
 
         <input
-          placeholder="Source title"
+          placeholder="Название источника"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           required
@@ -114,7 +117,7 @@ export default function SourcesPanel({ projectId }: Props) {
           />
         ) : (
           <input
-            placeholder="Telegram chat ID"
+            placeholder="@канал, ID чата или https://t.me/channel"
             value={chatId}
             onChange={(e) => setChatId(e.target.value)}
             required
@@ -122,7 +125,7 @@ export default function SourcesPanel({ projectId }: Props) {
         )}
 
         <button type="submit" className="btn-primary btn-sm" disabled={adding}>
-          {adding ? "Adding..." : "Add source"}
+          {adding ? "Добавление…" : "Добавить источник"}
         </button>
       </form>
     </div>

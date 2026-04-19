@@ -1,65 +1,92 @@
-import re
+"""
+RAGAS evaluation metrics using the official `ragas` library (v0.4+).
 
-TOKEN_RE = re.compile(r"[a-zA-Z0-9_]+")
+Provides LLM-based evaluation of RAG quality with four core metrics:
+- Faithfulness: are all claims in the answer supported by the context?
+- Answer Relevancy: how relevant is the answer to the question?
+- Context Precision: how many retrieved chunks are actually useful?
+- Context Recall: was all necessary information retrieved?
+
+Requires: pip install ragas langchain-openai
+LLM judge is configured via OPENROUTER_API_KEY / OPENROUTER_MODEL.
+"""
+from __future__ import annotations
+
+import logging
+import os
+import warnings
+
+logger = logging.getLogger(__name__)
+
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="ragas")
 
 
-def _tokenize(text: str) -> set[str]:
-    return {token.lower() for token in TOKEN_RE.findall(text)}
+def _get_ragas_llm():
+    """Build a ragas-compatible LLM wrapper backed by OpenRouter."""
+    try:
+        from ragas.llms import LangchainLLMWrapper
+        from langchain_openai import ChatOpenAI
+
+        api_key = os.getenv("OPENROUTER_API_KEY", "")
+        base_url = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+        model = os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini")
+
+        if not api_key:
+            logger.warning("OPENROUTER_API_KEY not set — LLM-based RAGAS metrics unavailable")
+            return None
+
+        llm = ChatOpenAI(
+            model=model,
+            openai_api_key=api_key,
+            openai_api_base=base_url,
+            temperature=0,
+        )
+        return LangchainLLMWrapper(llm)
+    except Exception as exc:
+        logger.warning("Failed to create RAGAS LLM: %s", exc)
+        return None
 
 
-def faithfulness(answer: str, contexts: list[str]) -> float:
+def _get_ragas_embeddings():
+    """Build ragas-compatible embeddings using LangChain + sentence-transformers."""
+    try:
+        from langchain_community.embeddings import HuggingFaceEmbeddings
+        from ragas.embeddings import LangchainEmbeddingsWrapper
+
+        model_name = os.getenv("RAGAS_EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+        lc_embeddings = HuggingFaceEmbeddings(model_name=model_name)
+        return LangchainEmbeddingsWrapper(lc_embeddings)
+    except Exception as exc:
+        logger.warning("Could not load embeddings for RAGAS: %s", exc)
+        return None
+
+
+def get_ragas_metrics():
     """
-    Lightweight proxy metric:
-    share of answer tokens that are supported by retrieved contexts.
+    Return a list of configured RAGAS metric instances compatible with ragas.evaluate().
+    Uses the legacy metric classes that implement ragas.metrics.base.Metric.
     """
-    answer_tokens = _tokenize(answer)
-    if not answer_tokens:
-        return 0.0
-    context_tokens: set[str] = set()
-    for chunk in contexts:
-        context_tokens |= _tokenize(chunk)
-    overlap = answer_tokens & context_tokens
-    return len(overlap) / len(answer_tokens)
+    try:
+        from ragas.metrics import (
+            faithfulness,
+            answer_relevancy,
+            context_precision,
+            context_recall,
+        )
 
+        llm = _get_ragas_llm()
+        embeddings = _get_ragas_embeddings()
 
-def relevancy(answer: str, question: str) -> float:
-    """
-    Lightweight proxy metric:
-    overlap between question tokens and answer tokens.
-    """
-    answer_tokens = _tokenize(answer)
-    question_tokens = _tokenize(question)
-    if not question_tokens:
-        return 0.0
-    overlap = answer_tokens & question_tokens
-    return len(overlap) / len(question_tokens)
+        if llm is not None:
+            faithfulness.llm = llm
+            answer_relevancy.llm = llm
+            context_precision.llm = llm
+            context_recall.llm = llm
 
+        if embeddings is not None:
+            answer_relevancy.embeddings = embeddings
 
-def context_precision(contexts: list[str], ground_truth: str) -> float:
-    """
-    Proxy precision:
-    share of context tokens that are relevant to the ground truth.
-    """
-    context_tokens: set[str] = set()
-    for chunk in contexts:
-        context_tokens |= _tokenize(chunk)
-    if not context_tokens:
-        return 0.0
-    truth_tokens = _tokenize(ground_truth)
-    overlap = context_tokens & truth_tokens
-    return len(overlap) / len(context_tokens)
-
-
-def context_recall(contexts: list[str], ground_truth: str) -> float:
-    """
-    Proxy recall:
-    share of ground-truth tokens covered by retrieved contexts.
-    """
-    truth_tokens = _tokenize(ground_truth)
-    if not truth_tokens:
-        return 0.0
-    context_tokens: set[str] = set()
-    for chunk in contexts:
-        context_tokens |= _tokenize(chunk)
-    overlap = context_tokens & truth_tokens
-    return len(overlap) / len(truth_tokens)
+        return [faithfulness, answer_relevancy, context_precision, context_recall]
+    except ImportError as exc:
+        logger.error("ragas library not installed: %s", exc)
+        raise

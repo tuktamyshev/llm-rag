@@ -1,4 +1,4 @@
-from evaluation.ragas.dataset_builder import EvalSample, build_dataset_from_jsonl
+from evaluation.ragas.dataset_builder import EvalSample, build_dataset_from_jsonl, build_ragas_dataset
 from evaluation.ragas.evaluator import EvaluationResult, RagasEvaluator
 
 __all__ = [
@@ -6,4 +6,5 @@ __all__ = [
     "EvaluationResult",
     "RagasEvaluator",
     "build_dataset_from_jsonl",
+    "build_ragas_dataset",
 ]

@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 
 class RetrieveRequest(BaseModel):
     project_id: int = Field(gt=0)
+    query: str = Field(default="", min_length=0)
     query_embedding: list[float] = Field(min_length=1)
     top_k: int = Field(default=5, ge=1, le=50)
 

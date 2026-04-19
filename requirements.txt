@@ -1,0 +1,34 @@
+# Web framework
+fastapi
+uvicorn[standard]
+
+# Database
+sqlalchemy
+psycopg2-binary
+email-validator
+alembic
+
+# Vector database
+qdrant-client>=1.12,<1.14
+
+# Required by embedding model
+einops
+
+# HTTP client
+httpx
+
+# Embeddings & reranking
+sentence-transformers
+torch
+transformers>=4.40,<4.50
+
+# Web scraping
+beautifulsoup4
+trafilatura
+
+# Telegram
+telethon
+
+# Evaluation (RAGAS)
+ragas
+langchain-openai

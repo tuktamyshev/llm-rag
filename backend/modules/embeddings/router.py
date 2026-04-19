@@ -16,7 +16,7 @@ def _service(db: Session = Depends(get_db)) -> EmbeddingService:
 
 @router.post("/text", response_model=EmbedTextResponse)
 def embed_single_text(payload: EmbedTextRequest) -> EmbedTextResponse:
-    return EmbedTextResponse(embedding=embed_text(payload.text, size=payload.size), model_name=MODEL_NAME)
+    return EmbedTextResponse(embedding=embed_text(payload.text), model_name=MODEL_NAME)
 
 
 @router.post("/chunks", response_model=EmbedChunksResponse)
@@ -31,6 +31,5 @@ def embed_chunks(payload: EmbedChunksRequest, service: EmbeddingService = Depend
             }
             for chunk in payload.chunks
         ],
-        size=payload.size,
     )
     return EmbedChunksResponse(items=items, model_name=MODEL_NAME)

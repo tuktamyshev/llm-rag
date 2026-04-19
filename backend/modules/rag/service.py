@@ -14,20 +14,31 @@ class RAGService:
         self.llm_client = llm_client
         self.logs = logs
 
-    def ask(self, payload: AskRAGRequest) -> AskRAGResponse:
+    def ask(self, payload: AskRAGRequest, history: list[dict] | None = None) -> AskRAGResponse:
         query_embedding = payload.query_embedding or embed_text(payload.query)
         retrieved = self.retriever.retrieve(
             RetrieveRequest(
                 project_id=payload.project_id,
+                query=payload.query,
                 query_embedding=query_embedding,
                 top_k=payload.top_k,
             )
         )
-        prompt = build_rag_prompt(query=payload.query, chunks=retrieved.items)
+        prompt = build_rag_prompt(
+            query=payload.query,
+            chunks=retrieved.items,
+            history=history,
+        )
         try:
             answer = self.llm_client.generate(
                 prompt=prompt,
-                system_prompt="You are a precise RAG assistant. Keep answers concise and faithful to context.",
+                system_prompt=(
+                    "You are a precise RAG assistant. "
+                    "Answer based on the provided context. "
+                    "If the context is insufficient, state it explicitly. "
+                    "Keep answers concise and faithful to the context. "
+                    "When referencing information, mention the source number."
+                ),
             )
         except RuntimeError as exc:
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc

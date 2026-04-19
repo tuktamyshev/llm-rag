@@ -1,0 +1,37 @@
+{
+  "samples_count": 5,
+  "avg_faithfulness": 0.8888888888888888,
+  "avg_relevancy": 0.7986349757925566,
+  "avg_context_precision": 0.9999999999,
+  "avg_context_recall": 1.0,
+  "raw_scores": {
+    "faithfulness": [
+      1.0,
+      NaN,
+      NaN,
+      1.0,
+      0.6666666666666666
+    ],
+    "answer_relevancy": [
+      1.0,
+      0.7237817885792357,
+      0.990476313345525,
+      0.2789167770380227,
+      1.0
+    ],
+    "context_precision": [
+      0.9999999999,
+      0.9999999999,
+      0.9999999999,
+      0.9999999999,
+      0.9999999999
+    ],
+    "context_recall": [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ]
+  }
+}

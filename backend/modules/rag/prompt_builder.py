@@ -1,20 +1,52 @@
+from __future__ import annotations
+
 from modules.rag.schemas import RetrievedChunk
 
+MAX_HISTORY_TURNS = 5
 
-def build_rag_prompt(*, query: str, chunks: list[RetrievedChunk]) -> str:
+
+def build_rag_prompt(
+    *,
+    query: str,
+    chunks: list[RetrievedChunk],
+    history: list[dict] | None = None,
+) -> str:
+    """
+    Build a grounded RAG prompt with:
+    - conversation history (for multi-turn context)
+    - retrieved context chunks with source attribution
+    - explicit instructions to stay faithful to the context
+    """
+    sections: list[str] = []
+
+    sections.append(
+        "Instructions:\n"
+        "- Answer the question using ONLY the provided context.\n"
+        "- Cite sources by their number [1], [2], etc.\n"
+        "- If the context does not contain enough information, say so explicitly.\n"
+        "- Be concise and precise."
+    )
+
+    if history:
+        recent = history[-MAX_HISTORY_TURNS:]
+        history_lines: list[str] = []
+        for turn in recent:
+            role = turn.get("role", "user")
+            content = turn.get("content", "")
+            prefix = "User" if role == "user" else "Assistant"
+            history_lines.append(f"{prefix}: {content}")
+        sections.append("Conversation history:\n" + "\n".join(history_lines))
+
     if not chunks:
         context_block = "No relevant context was found."
     else:
-        context_items = []
+        context_items: list[str] = []
         for idx, chunk in enumerate(chunks, start=1):
-            context_items.append(
-                f"[{idx}] source_id={chunk.source_id} chunk_id={chunk.chunk_id} score={chunk.score:.4f}\n{chunk.content}"
-            )
+            header = f"[{idx}] (source_id={chunk.source_id}, chunk_id={chunk.chunk_id}, relevance={chunk.score:.4f})"
+            context_items.append(f"{header}\n{chunk.content}")
         context_block = "\n\n".join(context_items)
 
-    return (
-        "Use only the context below to answer the question.\n"
-        "If the context is insufficient, state it explicitly.\n\n"
-        f"Question:\n{query}\n\n"
-        f"Context:\n{context_block}"
-    )
+    sections.append(f"Context:\n{context_block}")
+    sections.append(f"Question:\n{query}")
+
+    return "\n\n".join(sections)

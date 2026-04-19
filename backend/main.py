@@ -1,7 +1,10 @@
+import logging
 import os
+import traceback
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from api.v1.router import api_router
 from core.db import Base, engine
@@ -13,6 +16,23 @@ from modules.rag import models as rag_models  # noqa: F401
 from modules.sources import models as source_models  # noqa: F401
 from modules.users import models as user_models  # noqa: F401
 from modules.vectordb import models as vectordb_models  # noqa: F401
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-8s %(name)s — %(message)s")
+
+
+def _run_migrations() -> None:
+    """Apply pending Alembic migrations on startup."""
+    try:
+        from alembic.config import Config
+        from alembic import command
+
+        alembic_cfg = Config(os.path.join(os.path.dirname(__file__), "alembic.ini"))
+        command.upgrade(alembic_cfg, "head")
+    except Exception as exc:
+        logging.getLogger(__name__).warning(
+            "Alembic migration skipped (falling back to create_all): %s", exc,
+        )
+        Base.metadata.create_all(bind=engine)
 
 
 def create_app() -> FastAPI:
@@ -29,10 +49,22 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.include_router(api_router, prefix="/api/v1")
+
+    @app.exception_handler(Exception)
+    async def global_exception_handler(request: Request, exc: Exception):
+        logging.getLogger("uvicorn.error").error(
+            "Unhandled exception on %s %s:\n%s",
+            request.method,
+            request.url.path,
+            traceback.format_exc(),
+        )
+        return JSONResponse(
+            status_code=500,
+            content={"detail": str(exc)},
+        )
+
     return app
 
 
 app = create_app()
-
-# Simple bootstrap for local development.
-Base.metadata.create_all(bind=engine)
+_run_migrations()

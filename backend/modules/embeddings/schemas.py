@@ -3,7 +3,6 @@ from pydantic import BaseModel, Field
 
 class EmbedTextRequest(BaseModel):
     text: str = Field(min_length=1)
-    size: int = Field(default=32, ge=8, le=4096)
 
 
 class EmbedTextResponse(BaseModel):
@@ -20,7 +19,6 @@ class ChunkIn(BaseModel):
 
 class EmbedChunksRequest(BaseModel):
     chunks: list[ChunkIn] = Field(min_length=1)
-    size: int = Field(default=32, ge=8, le=4096)
 
 
 class EmbeddedChunk(BaseModel):

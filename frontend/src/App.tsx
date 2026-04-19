@@ -12,6 +12,15 @@ function mkMsg(role: "user" | "assistant", text: string): ChatMessage {
   return { id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, role, text, ts: new Date().toISOString() };
 }
 
+function formatTime(iso: string): string {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return "";
+  }
+}
+
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState("");
@@ -20,7 +29,7 @@ export default function App() {
   const [projectId, setProjectId] = useState<number | null>(null);
   const [showNewProject, setShowNewProject] = useState(false);
   const [newName, setNewName] = useState("");
-  const [newPrompt, setNewPrompt] = useState("Cyber threat intelligence assistant");
+  const [newPrompt, setNewPrompt] = useState("Ассистент по киберугрозам и интеллекту");
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -36,7 +45,6 @@ export default function App() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const autoRef = useRef<ReturnType<typeof setInterval>>();
 
-  // ── Restore auth ──
   useEffect(() => {
     try {
       const saved = localStorage.getItem(AUTH_KEY);
@@ -48,7 +56,6 @@ export default function App() {
     } catch { /* noop */ }
   }, []);
 
-  // ── Load projects ──
   useEffect(() => {
     if (!user) return;
     api.listProjects(user.id).then((p) => {
@@ -57,7 +64,6 @@ export default function App() {
     }).catch(() => {});
   }, [user]);
 
-  // ── Load stats ──
   const loadStats = useCallback((pid: number) => {
     api.projectStats(pid).then(setStats).catch(() => setStats(null));
   }, []);
@@ -67,7 +73,6 @@ export default function App() {
     else setStats(null);
   }, [projectId, loadStats]);
 
-  // ── Load chat history ──
   const loadHistory = useCallback(async (pid: number) => {
     try {
       const history = await api.chatHistory(pid);
@@ -75,7 +80,7 @@ export default function App() {
       for (const h of history) {
         msgs.push(mkMsg("user", h.question));
         const answer = h.sources?.length
-          ? `${h.answer}\n\nSources:\n${h.sources.map((s) => `• ${s}`).join("\n")}`
+          ? `${h.answer}\n\nИсточники:\n${h.sources.map((s) => `• ${s}`).join("\n")}`
           : h.answer;
         msgs.push({ ...mkMsg("assistant", answer), ts: h.created_at });
       }
@@ -90,12 +95,10 @@ export default function App() {
     else setMessages([]);
   }, [projectId, loadHistory]);
 
-  // ── Auto-scroll ──
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, sending]);
 
-  // ── Auto-refresh every hour ──
   useEffect(() => {
     if (!projectId) return;
     autoRef.current = setInterval(() => {
@@ -107,18 +110,17 @@ export default function App() {
     return () => clearInterval(autoRef.current);
   }, [projectId, loadStats]);
 
-  // ── Auth handlers ──
   function handleAuth(u: User, t: string) {
     setUser(u);
     setToken(t);
     localStorage.setItem(AUTH_KEY, JSON.stringify({ user: u, token: t }));
   }
+
   function logout() {
     setUser(null); setToken(""); setProjects([]); setProjectId(null); setMessages([]);
     localStorage.removeItem(AUTH_KEY);
   }
 
-  // ── Create project ──
   async function createProject(e: FormEvent) {
     e.preventDefault();
     if (!user || !newName.trim()) return;
@@ -129,11 +131,10 @@ export default function App() {
       setNewName("");
       setShowNewProject(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed");
+      setError(err instanceof Error ? err.message : "Ошибка");
     }
   }
 
-  // ── Refresh data ──
   async function handleRefresh() {
     if (!projectId || refreshing) return;
     setRefreshing(true);
@@ -144,13 +145,12 @@ export default function App() {
       setLastRefresh(result);
       loadStats(projectId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Refresh failed");
+      setError(err instanceof Error ? err.message : "Не удалось обновить базу");
     } finally {
       setRefreshing(false);
     }
   }
 
-  // ── Send message ──
   async function handleSend(e: FormEvent) {
     e.preventDefault();
     const text = input.trim();
@@ -162,11 +162,11 @@ export default function App() {
     try {
       const res = await api.chat(projectId, text);
       const answer = res.sources?.length
-        ? `${res.answer}\n\nSources:\n${res.sources.map((s) => `• ${s}`).join("\n")}`
+        ? `${res.answer}\n\nИсточники:\n${res.sources.map((s) => `• ${s}`).join("\n")}`
         : res.answer;
       setMessages((prev) => [...prev, mkMsg("assistant", answer)]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed");
+      setError(err instanceof Error ? err.message : "Ошибка");
     } finally {
       setSending(false);
     }
@@ -178,38 +178,37 @@ export default function App() {
 
   return (
     <div className="layout">
-      {/* ── Sidebar ── */}
       <aside className="sidebar">
         <div className="sidebar-top">
-          <h1>LLM RAG</h1>
+          <h1>Платформа RAG</h1>
           <div className="user-badge">
             <span>{user.full_name}</span>
-            <button className="btn-link-sm" onClick={logout}>Sign out</button>
+            <button className="btn-link-sm" onClick={logout}>Выйти</button>
           </div>
         </div>
 
         <div className="side-tabs">
           <button className={sideTab === "projects" ? "active" : ""} onClick={() => setSideTab("projects")}>
-            Projects
+            Проекты
           </button>
           <button className={sideTab === "sources" ? "active" : ""} onClick={() => setSideTab("sources")}>
-            Sources
+            Источники
           </button>
         </div>
 
         {sideTab === "projects" && (
           <div className="side-content">
             <button className="btn-new" onClick={() => setShowNewProject(!showNewProject)}>
-              + New project
+              + Новый проект
             </button>
 
             {showNewProject && (
               <form className="new-project-form" onSubmit={createProject}>
-                <input placeholder="Project name" value={newName} onChange={(e) => setNewName(e.target.value)} required autoFocus />
-                <textarea placeholder="System prompt" value={newPrompt} onChange={(e) => setNewPrompt(e.target.value)} rows={2} />
+                <input placeholder="Название проекта" value={newName} onChange={(e) => setNewName(e.target.value)} required autoFocus />
+                <textarea placeholder="Системный промпт" value={newPrompt} onChange={(e) => setNewPrompt(e.target.value)} rows={2} />
                 <div className="form-actions">
-                  <button type="submit" className="btn-primary btn-sm">Create</button>
-                  <button type="button" className="btn-ghost btn-sm" onClick={() => setShowNewProject(false)}>Cancel</button>
+                  <button type="submit" className="btn-primary btn-sm">Создать</button>
+                  <button type="button" className="btn-ghost btn-sm" onClick={() => setShowNewProject(false)}>Отмена</button>
                 </div>
               </form>
             )}
@@ -225,7 +224,7 @@ export default function App() {
                   <span className="project-name">{p.name}</span>
                 </button>
               ))}
-              {projects.length === 0 && <p className="muted">No projects yet</p>}
+              {projects.length === 0 && <p className="muted">Пока нет проектов</p>}
             </div>
           </div>
         )}
@@ -236,16 +235,15 @@ export default function App() {
           </div>
         )}
         {sideTab === "sources" && !projectId && (
-          <p className="muted pad">Select a project first</p>
+          <p className="muted pad">Сначала выберите проект</p>
         )}
       </aside>
 
-      {/* ── Chat area ── */}
       <main className="chat-area">
         <header className="chat-header">
           <div className="header-row">
             <div>
-              <h2>{project?.name ?? "Select a project"}</h2>
+              <h2>{project?.name ?? "Выберите проект"}</h2>
               {project?.prompt && <p className="header-prompt">{project.prompt}</p>}
             </div>
             {projectId && (
@@ -253,40 +251,38 @@ export default function App() {
                 className={`btn-refresh${refreshing ? " spinning" : ""}`}
                 onClick={handleRefresh}
                 disabled={refreshing}
-                title="Collect data from all sources and update the knowledge base"
+                title="Собрать данные из всех источников и обновить базу знаний"
               >
-                {refreshing ? "Collecting data..." : "Refresh knowledge base"}
+                {refreshing ? "Сбор данных…" : "Обновить базу знаний"}
               </button>
             )}
           </div>
 
-          {/* ── Status bar ── */}
           {projectId && stats && (
             <div className="status-bar">
               <div className="stat">
                 <span className={`dot${stats.chunks_count > 0 ? " green" : " gray"}`} />
-                <span>{stats.chunks_count} chunks in DB</span>
+                <span>{stats.chunks_count} фрагментов</span>
               </div>
               <div className="stat">
-                <span>{stats.sources_count} source{stats.sources_count !== 1 ? "s" : ""}</span>
+                <span>Источников: {stats.sources_count}</span>
               </div>
               {stats.last_updated && (
                 <div className="stat">
-                  Last updated: {new Date(stats.last_updated).toLocaleString()}
+                  Обновлено {new Date(stats.last_updated).toLocaleString("ru-RU")}
                 </div>
               )}
               {!stats.last_updated && stats.sources_count > 0 && (
-                <div className="stat warn">Not yet ingested — click &quot;Refresh knowledge base&quot;</div>
+                <div className="stat warn">Ещё не загружено</div>
               )}
             </div>
           )}
 
-          {/* ── Refresh result toast ── */}
           {lastRefresh && (
             <div className={`refresh-toast${lastRefresh.errors.length ? " has-errors" : ""}`}>
-              Processed {lastRefresh.sources_processed} source(s), {lastRefresh.total_chunks} chunk(s) created
+              Обработано источников: {lastRefresh.sources_processed}, создано фрагментов: {lastRefresh.total_chunks}
               {lastRefresh.errors.length > 0 && (
-                <span className="refresh-errors"> | Errors: {lastRefresh.errors.join("; ")}</span>
+                <span className="refresh-errors"> | Ошибки: {lastRefresh.errors.join("; ")}</span>
               )}
             </div>
           )}
@@ -298,17 +294,30 @@ export default function App() {
               <p className="empty-state">
                 {projectId
                   ? stats && stats.chunks_count === 0
-                    ? "Add sources in the sidebar, then click \"Refresh knowledge base\" to start."
-                    : "No messages yet. Ask a question!"
-                  : "Select a project from the sidebar."}
+                    ? <>Добавьте источники в боковой панели и нажмите <strong>«Обновить базу знаний»</strong>.</>
+                    : "Пока нет сообщений. Задайте вопрос!"
+                  : "Выберите проект в боковой панели."}
               </p>
             )}
             {messages.map((m) => (
               <div key={m.id} className={`msg ${m.role}`}>
-                <div className="msg-avatar">{m.role === "user" ? "U" : "AI"}</div>
-                <div className="msg-bubble">{m.text}</div>
+                <div className="msg-avatar">{m.role === "user" ? "Вы" : "ИИ"}</div>
+                <div className="msg-content">
+                  <div className="msg-bubble">{m.text}</div>
+                  <span className="msg-time">{formatTime(m.ts)}</span>
+                </div>
               </div>
             ))}
+
+            {sending && (
+              <div className="typing-indicator">
+                <div className="msg-avatar" style={{ background: "linear-gradient(135deg, #374151, #4b5563)", width: 34, height: 34, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "#fff", flexShrink: 0 }}>ИИ</div>
+                <div className="typing-dots">
+                  <span /><span /><span />
+                </div>
+              </div>
+            )}
+
             <div ref={bottomRef} />
           </div>
         </div>
@@ -319,7 +328,7 @@ export default function App() {
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={projectId ? "Ask a question..." : "Select a project first"}
+            placeholder={projectId ? "Введите вопрос…" : "Сначала выберите проект"}
             disabled={sending || !projectId}
             rows={2}
             onKeyDown={(e) => {
@@ -327,7 +336,7 @@ export default function App() {
             }}
           />
           <button type="submit" disabled={sending || !input.trim() || !projectId}>
-            {sending ? "..." : "Send"}
+            {sending ? "…" : "Отправить"}
           </button>
         </form>
       </main>

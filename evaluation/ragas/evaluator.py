@@ -1,7 +1,18 @@
+"""
+RAG evaluator using the official ragas library.
+
+Runs ragas.evaluate() with Faithfulness, AnswerRelevancy,
+ContextPrecision, and ContextRecall metrics.
+"""
+from __future__ import annotations
+
+import logging
 from dataclasses import dataclass
 
-from evaluation.ragas.dataset_builder import EvalSample
-from evaluation.ragas.metrics import context_precision, context_recall, faithfulness, relevancy
+from evaluation.ragas.dataset_builder import EvalSample, build_ragas_dataset
+from evaluation.ragas.metrics import get_ragas_metrics
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -11,11 +22,13 @@ class EvaluationResult:
     avg_relevancy: float
     avg_context_precision: float
     avg_context_recall: float
+    raw_scores: dict | None = None
 
 
 class RagasEvaluator:
     """
-    Offline evaluator. It does not integrate with runtime API.
+    Evaluator that delegates scoring to the official ragas library.
+    Uses LLM-as-judge for all four core metrics.
     """
 
     def evaluate(self, dataset: list[EvalSample]) -> EvaluationResult:
@@ -28,25 +41,58 @@ class RagasEvaluator:
                 avg_context_recall=0.0,
             )
 
-        faithfulness_scores: list[float] = []
-        relevancy_scores: list[float] = []
-        precision_scores: list[float] = []
-        recall_scores: list[float] = []
+        samples_with_answers = [s for s in dataset if s.answer is not None]
+        if not samples_with_answers:
+            raise ValueError("No samples with answers found in dataset")
 
-        for sample in dataset:
-            if sample.answer is None:
-                raise ValueError("Each sample must include 'answer' for evaluation")
+        ragas_dataset = build_ragas_dataset(samples_with_answers)
+        metrics = get_ragas_metrics()
 
-            faithfulness_scores.append(faithfulness(sample.answer, sample.contexts))
-            relevancy_scores.append(relevancy(sample.answer, sample.question))
-            precision_scores.append(context_precision(sample.contexts, sample.ground_truth))
-            recall_scores.append(context_recall(sample.contexts, sample.ground_truth))
+        from ragas import evaluate as ragas_evaluate
 
-        count = len(dataset)
+        logger.info(
+            "Running RAGAS evaluation on %d samples with %d metrics...",
+            len(samples_with_answers),
+            len(metrics),
+        )
+
+        result = ragas_evaluate(
+            dataset=ragas_dataset,
+            metrics=metrics,
+        )
+
+        scores = result.to_pandas()
+        raw = {}
+
+        faithfulness_score = 0.0
+        relevancy_score = 0.0
+        precision_score = 0.0
+        recall_score = 0.0
+
+        if "faithfulness" in scores.columns:
+            faithfulness_score = scores["faithfulness"].mean()
+            raw["faithfulness"] = scores["faithfulness"].tolist()
+
+        if "answer_relevancy" in scores.columns:
+            relevancy_score = scores["answer_relevancy"].mean()
+            raw["answer_relevancy"] = scores["answer_relevancy"].tolist()
+
+        precision_col = next(
+            (c for c in scores.columns if "context_precision" in c), None,
+        )
+        if precision_col:
+            precision_score = scores[precision_col].mean()
+            raw["context_precision"] = scores[precision_col].tolist()
+
+        if "context_recall" in scores.columns:
+            recall_score = scores["context_recall"].mean()
+            raw["context_recall"] = scores["context_recall"].tolist()
+
         return EvaluationResult(
-            samples_count=count,
-            avg_faithfulness=sum(faithfulness_scores) / count,
-            avg_relevancy=sum(relevancy_scores) / count,
-            avg_context_precision=sum(precision_scores) / count,
-            avg_context_recall=sum(recall_scores) / count,
+            samples_count=len(samples_with_answers),
+            avg_faithfulness=float(faithfulness_score),
+            avg_relevancy=float(relevancy_score),
+            avg_context_precision=float(precision_score),
+            avg_context_recall=float(recall_score),
+            raw_scores=raw,
         )

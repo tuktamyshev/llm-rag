@@ -3,41 +3,41 @@ import type { NewsItem, Threat } from "./types";
 export const mockThreats: Threat[] = [
   {
     id: "t1",
-    title: "Ransomware campaign targeting logistics",
+    title: "Кампания шифровальщиков против логистики",
     severity: "critical",
-    description: "Active phishing wave with payload loaders distributed via fake shipment updates."
+    description: "Волна фишинга с загрузчиками полезной нагрузки через поддельные уведомления о доставке."
   },
   {
     id: "t2",
-    title: "Credential stuffing against partner portal",
+    title: "Подбор учётных данных к порталу партнёров",
     severity: "high",
-    description: "Multiple failed logins from rotating residential proxies indicate automated abuse."
+    description: "Множество неудачных входов с ротирующихся резидентских прокси указывает на автоматизацию."
   },
   {
     id: "t3",
-    title: "Suspicious C2 beacon in engineering VLAN",
+    title: "Подозрительный C2-маяк в инженерном VLAN",
     severity: "medium",
-    description: "Periodic encrypted traffic to newly registered domains observed outside office hours."
+    description: "Периодический зашифрованный трафик на недавно зарегистрированные домены вне рабочих часов."
   }
 ];
 
 export const mockNews: NewsItem[] = [
   {
     id: "n1",
-    title: "New zero-day in edge appliances",
+    title: "Новый zero-day в пограничных устройствах",
     source: "CyberWire",
-    text: "Researchers disclosed an unauthenticated RCE affecting several enterprise edge appliances."
+    text: "Исследователи сообщили об неаутентифицированной RCE в ряде корпоративных edge-устройств."
   },
   {
     id: "n2",
-    title: "Botnet resumes DDoS extortion",
+    title: "Ботнет возобновил DDoS-вымогательство",
     source: "DarkReading",
-    text: "A known threat actor restarted extortion operations targeting financial organizations."
+    text: "Известный злоумышленник возобновил вымогательские операции против финансовых организаций."
   },
   {
     id: "n3",
-    title: "Stealer malware spread via cracked software",
+    title: "Стилер через взломанное ПО",
     source: "BleepingComputer",
-    text: "Campaign uses trojanized installers and exfiltrates browser data, cookies and tokens."
+    text: "Кампания использует троянизированные установщики и выгружает данные браузера, куки и токены."
   }
 ];

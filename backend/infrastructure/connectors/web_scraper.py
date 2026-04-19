@@ -1,41 +1,18 @@
-import re
-from html.parser import HTMLParser
+from __future__ import annotations
+
+import logging
 from urllib import error, request
 
+logger = logging.getLogger(__name__)
 
-class _TextExtractor(HTMLParser):
-    """Extracts visible text from HTML, skipping script/style blocks."""
-
-    _SKIP = frozenset({"script", "style", "noscript", "svg", "head"})
-
-    def __init__(self) -> None:
-        super().__init__()
-        self._parts: list[str] = []
-        self._skip_depth = 0
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag.lower() in self._SKIP:
-            self._skip_depth += 1
-
-    def handle_endtag(self, tag: str) -> None:
-        if tag.lower() in self._SKIP and self._skip_depth > 0:
-            self._skip_depth -= 1
-
-    def handle_data(self, data: str) -> None:
-        if self._skip_depth == 0:
-            text = data.strip()
-            if text:
-                self._parts.append(text)
-
-    def get_text(self) -> str:
-        raw = " ".join(self._parts)
-        return re.sub(r"\s+", " ", raw).strip()
+MAX_CONTENT_LENGTH = 100_000
 
 
 def scrape_web_content(url: str, title: str, timeout: int = 15) -> str:
-    """Fetch a web page and extract its visible text content."""
+    """Fetch a web page and extract its visible text content using trafilatura + bs4 fallback."""
     if not url:
         return ""
+
     req = request.Request(url, headers={"User-Agent": "llm-rag-bot/1.0"})
     try:
         with request.urlopen(req, timeout=timeout) as resp:
@@ -43,9 +20,46 @@ def scrape_web_content(url: str, title: str, timeout: int = 15) -> str:
             charset = resp.headers.get_content_charset() or "utf-8"
             html = raw_bytes.decode(charset, errors="replace")
     except (error.URLError, error.HTTPError, OSError, ValueError) as exc:
+        logger.warning("Scrape error for %s: %s", title, exc)
         return f"[scrape error for {title}] {exc}"
 
-    parser = _TextExtractor()
-    parser.feed(html)
-    text = parser.get_text()
-    return text[:50_000] if text else f"[no text extracted from {url}]"
+    text = _extract_with_trafilatura(html)
+    if not text:
+        text = _extract_with_bs4(html)
+    if not text:
+        return f"[no text extracted from {url}]"
+
+    return text[:MAX_CONTENT_LENGTH]
+
+
+def _extract_with_trafilatura(html: str) -> str:
+    """Primary extraction using trafilatura — optimized for article / main content."""
+    try:
+        import trafilatura
+
+        result = trafilatura.extract(
+            html,
+            include_comments=False,
+            include_tables=True,
+            no_fallback=False,
+            favor_precision=False,
+        )
+        return result or ""
+    except Exception:
+        logger.debug("trafilatura extraction failed, falling back to bs4")
+        return ""
+
+
+def _extract_with_bs4(html: str) -> str:
+    """Fallback extraction using BeautifulSoup."""
+    try:
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(html, "html.parser")
+        for tag in soup(["script", "style", "noscript", "svg", "head", "nav", "footer", "header"]):
+            tag.decompose()
+        text = soup.get_text(separator=" ", strip=True)
+        return " ".join(text.split())
+    except Exception:
+        logger.debug("bs4 extraction failed")
+        return ""

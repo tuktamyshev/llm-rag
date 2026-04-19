@@ -20,12 +20,12 @@ export default function LoginPage({ onAuth }: Props) {
     setError("");
     try {
       if (mode === "register") {
-        await api.register(email.trim(), name.trim() || "User", password);
+        await api.register(email.trim(), name.trim() || "Пользователь", password);
       }
       const { access_token, user } = await api.login(email.trim(), password);
       onAuth(user, access_token);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Auth failed");
+      setError(err instanceof Error ? err.message : "Ошибка входа");
     } finally {
       setLoading(false);
     }
@@ -34,18 +34,21 @@ export default function LoginPage({ onAuth }: Props) {
   return (
     <div className="auth-page">
       <div className="auth-card">
-        <h1>LLM RAG Platform</h1>
+        <h1>Платформа LLM RAG</h1>
         <p className="auth-subtitle">
-          {mode === "login" ? "Sign in to continue" : "Create a new account"}
+          {mode === "login"
+            ? "Войдите в аккаунт"
+            : "Создайте новый аккаунт"}
         </p>
 
         <form onSubmit={submit}>
           <label>
-            Email
+            Электронная почта
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
               required
               autoFocus
             />
@@ -53,22 +56,24 @@ export default function LoginPage({ onAuth }: Props) {
 
           {mode === "register" && (
             <label>
-              Full name
+              Полное имя
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+                placeholder="Иван Иванов"
                 required
               />
             </label>
           )}
 
           <label>
-            Password
+            Пароль
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              placeholder="Не менее 8 символов"
               required
               minLength={8}
             />
@@ -77,7 +82,7 @@ export default function LoginPage({ onAuth }: Props) {
           {error && <p className="auth-error">{error}</p>}
 
           <button type="submit" className="btn-primary" disabled={loading}>
-            {loading ? "Please wait..." : mode === "login" ? "Sign in" : "Create account"}
+            {loading ? "Подождите…" : mode === "login" ? "Войти" : "Создать аккаунт"}
           </button>
         </form>
 
@@ -86,7 +91,7 @@ export default function LoginPage({ onAuth }: Props) {
           className="btn-link"
           onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(""); }}
         >
-          {mode === "login" ? "Don't have an account? Register" : "Already have an account? Sign in"}
+          {mode === "login" ? "Нет аккаунта? Зарегистрироваться" : "Уже есть аккаунт? Войти"}
         </button>
       </div>
     </div>
