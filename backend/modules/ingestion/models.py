@@ -1,10 +1,11 @@
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, Text
+from sqlalchemy import DateTime, ForeignKey, Integer, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from core.db import Base
+from core.pg_enum import pg_str_enum
 
 
 class IngestionJobStatus(StrEnum):
@@ -21,7 +22,9 @@ class IngestionJob(Base):
     source_id: Mapped[int] = mapped_column(ForeignKey("sources.id", ondelete="CASCADE"), index=True, nullable=False)
     cron: Mapped[str] = mapped_column(Text, nullable=False, default="*/30 * * * *")
     status: Mapped[IngestionJobStatus] = mapped_column(
-        Enum(IngestionJobStatus), default=IngestionJobStatus.PENDING, nullable=False
+        pg_str_enum(IngestionJobStatus, "ingestionjobstatus"),
+        default=IngestionJobStatus.PENDING,
+        nullable=False,
     )
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: help up down logs ps backend frontend example eval migrate migration
+.PHONY: help up down logs ps backend frontend example eval migrate migration rebuild-backend
 
 help:
 	@echo "Available commands:"
@@ -14,6 +14,7 @@ help:
 	@echo "  make eval            - run offline evaluation script"
 	@echo "  make migrate         - apply pending alembic migrations"
 	@echo "  make migration m=msg - create new migration (autogenerate)"
+	@echo "  make rebuild-backend - rebuild backend image (no cache) and restart service"
 
 up:
 	docker compose up --build -d
@@ -44,3 +45,6 @@ migrate:
 
 migration:
 	cd backend && alembic revision --autogenerate -m "$(m)"
+
+rebuild-backend:
+	docker compose build --no-cache backend && docker compose up -d backend

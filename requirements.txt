@@ -3,7 +3,7 @@ fastapi
 uvicorn[standard]
 
 # Database
-sqlalchemy
+sqlalchemy>=2.0.23
 psycopg2-binary
 email-validator
 alembic

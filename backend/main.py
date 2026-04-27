@@ -41,13 +41,20 @@ def create_app() -> FastAPI:
         "CORS_ALLOW_ORIGINS",
         "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5175,http://127.0.0.1:5175",
     ).split(",")
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=[origin.strip() for origin in allowed_origins if origin.strip()],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+    # Доступ к UI по IP в LAN (http://192.168.x.x:3000) без ручного перечисления каждого origin
+    _lan_regex = os.getenv(
+        "CORS_ALLOW_ORIGIN_REGEX",
+        r"^http://(192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2[0-9]|3[0-1])\.\d{1,3}\.\d{1,3})(:\d+)?$",
+    ).strip()
+    cors_kw: dict = {
+        "allow_origins": [origin.strip() for origin in allowed_origins if origin.strip()],
+        "allow_credentials": True,
+        "allow_methods": ["*"],
+        "allow_headers": ["*"],
+    }
+    if _lan_regex and _lan_regex.lower() not in ("0", "false", "no", "off"):
+        cors_kw["allow_origin_regex"] = _lan_regex
+    app.add_middleware(CORSMiddleware, **cors_kw)
     app.include_router(api_router, prefix="/api/v1")
 
     @app.exception_handler(Exception)

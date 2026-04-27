@@ -343,7 +343,3 @@ python -m evaluation.ragas.run_eval --dataset evaluation/sample_dataset.jsonl --
 6. **Демо UI** обращается к API с браузера (localhost); при смене хостов обновите CORS и URL в переменных Vite.
 
 ---
-
-## Лицензия и вклад
-
-Указание лицензии и правил контрибуции добавьте при необходимости в корень репозитория.

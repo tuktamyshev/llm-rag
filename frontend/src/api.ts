@@ -1,10 +1,42 @@
 import type { ChatLogEntry, ChatResponse, IngestionJob, Project, Source, User } from "./types";
 
-const API =
-  (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8000/api/v1";
+function viteMetaEnv(): Record<string, string | boolean | undefined> | undefined {
+  return (import.meta as unknown as { env?: Record<string, string | boolean | undefined> }).env;
+}
+
+function viteEnvString(key: "VITE_API_URL"): string | undefined {
+  const v = viteMetaEnv()?.[key];
+  return typeof v === "string" ? v.trim() : undefined;
+}
+
+function isViteDev(): boolean {
+  return Boolean(viteMetaEnv()?.DEV);
+}
+
+/**
+ * API base URL.
+ * - Vite dev (`npm run dev`, в т.ч. в Docker): относительный `/api/v1` — тот же origin, что у страницы;
+ *   запросы проксируются на бэкенд (см. `vite.config.ts`), не нужен доступ к порту 8000 с машины клиента.
+ * - Production / preview: если VITE_API_URL указывает на localhost, а страница открыта с LAN-IP,
+ *   подставляем hostname страницы и порт 8000; иначе — явный VITE_API_URL.
+ */
+function getApiBase(): string {
+  const env = viteEnvString("VITE_API_URL")?.replace(/\/$/, "");
+  if (typeof window !== "undefined" && isViteDev()) {
+    return "/api/v1";
+  }
+  if (typeof window !== "undefined") {
+    const bundledIsLoopback = (u: string) => /localhost|127\.0\.0\.1/i.test(u);
+    if (!env || bundledIsLoopback(env)) {
+      return `${window.location.protocol}//${window.location.hostname}:8000/api/v1`;
+    }
+    return env;
+  }
+  return env || "http://localhost:8000/api/v1";
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API}${path}`, init);
+  const res = await fetch(`${getApiBase()}${path}`, init);
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new Error(`${res.status}: ${body || res.statusText}`);

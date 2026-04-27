@@ -1,10 +1,11 @@
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import DateTime, Enum, ForeignKey, JSON, String, Text
+from sqlalchemy import DateTime, ForeignKey, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from core.db import Base
+from core.pg_enum import pg_str_enum
 
 
 class SourceType(StrEnum):
@@ -17,7 +18,7 @@ class Source(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True, nullable=False)
-    source_type: Mapped[SourceType] = mapped_column(Enum(SourceType), index=True, nullable=False)
+    source_type: Mapped[SourceType] = mapped_column(pg_str_enum(SourceType, "sourcetype"), index=True, nullable=False)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     external_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     uri: Mapped[str | None] = mapped_column(Text, nullable=True)
