@@ -295,6 +295,42 @@ body {
 }
 
 /* ── Project list ── */
+.project-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.danger-text {
+  color: #fb7185;
+}
+
+.edit-project-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+  background: var(--surface);
+  padding: 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+
+.edit-project-form input,
+.edit-project-form textarea {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 9px 12px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text);
+  outline: none;
+}
+
+.edit-project-form textarea { resize: vertical; min-height: 80px; }
+
 .project-list { display: flex; flex-direction: column; gap: 4px; }
 
 .project-item {

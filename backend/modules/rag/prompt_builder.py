@@ -20,11 +20,14 @@ def build_rag_prompt(
     sections: list[str] = []
 
     sections.append(
-        "Instructions:\n"
-        "- Answer the question using ONLY the provided context.\n"
-        "- Do not mention chunk IDs, source IDs, scores, or citation markers like [1] — answer in plain prose.\n"
-        "- If the context does not contain enough information, say so explicitly.\n"
-        "- Be concise and precise."
+        "Инструкции к ответу:\n"
+        "- Сначала опирайся на контекст ниже. Упоминая факты из него, называй только "
+        "читаемое имя источника (строка «Источник» у фрагмента), не раскрывай внутренние ID и не "
+        "используй слово «чанк».\n"
+        "- Нужен уточняющий ответ или очевидное пояснение, а в контексте этого нет — можно кратко "
+        "использовать общие знания; не выдавай за факты из базы то, чего в контексте нет.\n"
+        "- Если по сути вопроса в контексте нет достаточных сведений, скажи прямо.\n"
+        "- Пиши по существу."
     )
 
     if history:
@@ -38,15 +41,15 @@ def build_rag_prompt(
         sections.append("Conversation history:\n" + "\n".join(history_lines))
 
     if not chunks:
-        context_block = "No relevant context was found."
+        context_block = "Релевантных фрагментов не найдено."
     else:
         context_items: list[str] = []
         for idx, chunk in enumerate(chunks, start=1):
-            header = f"[{idx}]"
-            context_items.append(f"{header}\n{chunk.content}")
+            name = (chunk.source_title or "").strip() or f"источник #{chunk.source_id}"
+            context_items.append(f"[{idx}] Источник: «{name}»\n{chunk.content}")
         context_block = "\n\n".join(context_items)
 
-    sections.append(f"Context:\n{context_block}")
-    sections.append(f"Question:\n{query}")
+    sections.append(f"Контекст:\n{context_block}")
+    sections.append(f"Вопрос:\n{query}")
 
     return "\n\n".join(sections)

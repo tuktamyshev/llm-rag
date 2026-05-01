@@ -77,6 +77,10 @@ class IngestionService:
             )
         return created
 
+    def ingest_source_now(self, source: Source, raw_text: str | None = None) -> list[SourceChunk]:
+        """Полный сбор и индексация одного источника (без записи ingestion job)."""
+        return self._ingest_source(source, raw_text=raw_text)
+
     def run_job(self, job_id: int, raw_text: str | None = None, now: datetime | None = None) -> list[SourceChunk]:
         job = self.ingestion.get_job(job_id)
         if not job:

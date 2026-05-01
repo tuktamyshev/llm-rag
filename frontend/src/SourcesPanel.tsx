@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import { api } from "./api";
-import type { Source } from "./types";
+import type { Source, SourceCreated } from "./types";
 
 type Props = { projectId: number };
 
@@ -40,14 +40,22 @@ export default function SourcesPanel({ projectId }: Props) {
     setAdding(true);
     setError("");
     try {
+      let created: SourceCreated;
       if (tab === "web") {
-        await api.addWebSource(projectId, title.trim(), url.trim());
+        created = await api.addWebSource(projectId, title.trim(), url.trim());
       } else if (tab === "telegram") {
-        await api.addTelegramSource(projectId, title.trim(), chatId.trim());
+        created = await api.addTelegramSource(projectId, title.trim(), chatId.trim());
       } else {
         if (!file) return;
-        await api.addFileSource(projectId, title.trim(), file);
+        created = await api.addFileSource(projectId, title.trim(), file);
         setFile(null);
+      }
+      if (created.ingest_error) {
+        setError(
+          `Источник добавлен, но индексация не удалась: ${created.ingest_error}`,
+        );
+      } else {
+        setError("");
       }
       setTitle("");
       setUrl("");

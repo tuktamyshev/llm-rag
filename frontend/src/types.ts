@@ -22,6 +22,12 @@ export type Source = {
   settings: Record<string, unknown>;
 };
 
+/** Ответ POST /sources/* после первичной индексации */
+export type SourceCreated = Source & {
+  ingest_error?: string | null;
+  chunks_indexed?: number;
+};
+
 export type IngestionJob = {
   id: number;
   source_id: number;

@@ -6,9 +6,11 @@ from infrastructure.llm.openrouter import OpenRouterLLMClient
 from modules.chat.repository import ChatRepository
 from modules.chat.schemas import ChatLogRead, ChatRequest, ChatResponse
 from modules.chat.service import ChatService
+from modules.projects.repository import ProjectRepository
 from modules.rag.repository import RAGLogRepository
 from modules.rag.retriever import VectorRetriever
 from modules.rag.service import RAGService
+from modules.sources.repository import SourceRepository
 from modules.vectordb.repository import QdrantRepository, VectorRecordRepository
 from modules.vectordb.service import VectorDBService
 
@@ -26,6 +28,8 @@ def _chat_service(db: Session = Depends(get_db)) -> ChatService:
         retriever=VectorRetriever(vectordb=vectordb),
         llm_client=OpenRouterLLMClient(),
         logs=RAGLogRepository(db),
+        sources=SourceRepository(db),
+        projects=ProjectRepository(db),
     )
     return ChatService(rag_service=rag_service, repository=ChatRepository(db))
 

@@ -23,10 +23,10 @@ class ChatService:
             ),
             history=history,
         )
-        sources = [
-            f"source_id={chunk.source_id}, chunk_id={chunk.chunk_id}, score={chunk.score:.4f}"
-            for chunk in rag_response.context_chunks
-        ]
+        sources = []
+        for chunk in rag_response.context_chunks:
+            label = (chunk.source_title or "").strip() or f"источник #{chunk.source_id}"
+            sources.append(f"«{label}» (score={chunk.score:.4f})")
         self.repository.create_log(
             project_id=project_id,
             question=payload.message,

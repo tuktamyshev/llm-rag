@@ -21,6 +21,7 @@ class RAGLogRepository:
             {
                 "chunk_id": item.chunk_id,
                 "source_id": item.source_id,
+                "source_title": item.source_title,
                 "content": item.content,
                 "score": item.score,
             }

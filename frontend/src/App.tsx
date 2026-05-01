@@ -40,7 +40,13 @@ export default function App() {
   const [projectId, setProjectId] = useState<number | null>(null);
   const [showNewProject, setShowNewProject] = useState(false);
   const [newName, setNewName] = useState("");
-  const [newPrompt, setNewPrompt] = useState("Ассистент по киберугрозам и интеллекту");
+  const [newPrompt, setNewPrompt] = useState(
+    "Отвечай по базе знаний проекта; при необходимости уточняй термины.",
+  );
+
+  const [editProjectOpen, setEditProjectOpen] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editPrompt, setEditPrompt] = useState("");
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -125,6 +131,7 @@ export default function App() {
   useEffect(() => {
     setShowSchedule(false);
     setSchedulePopoverPos(null);
+    setEditProjectOpen(false);
   }, [projectId]);
 
   useLayoutEffect(() => {
@@ -219,6 +226,48 @@ export default function App() {
       setShowNewProject(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка");
+    }
+  }
+
+  function openEditProject() {
+    const p = projects.find((x) => x.id === projectId);
+    if (!p) return;
+    setEditName(p.name);
+    setEditPrompt(p.prompt ?? "");
+    setEditProjectOpen(true);
+  }
+
+  async function saveEditProject(e: FormEvent) {
+    e.preventDefault();
+    if (!projectId || !editName.trim()) return;
+    setError("");
+    try {
+      const updated = await api.updateProject(projectId, {
+        name: editName.trim(),
+        prompt: editPrompt.trim() || null,
+      });
+      setProjects((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
+      setEditProjectOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось сохранить проект");
+    }
+  }
+
+  async function deleteCurrentProject() {
+    if (!projectId) return;
+    if (!window.confirm("Удалить проект и все связанные источники, историю чата и индекс?")) return;
+    setError("");
+    try {
+      await api.deleteProject(projectId);
+      const next = projects.filter((p) => p.id !== projectId);
+      setProjects(next);
+      setProjectId(next[0]?.id ?? null);
+      setEditProjectOpen(false);
+      setMessages([]);
+      setLastRefresh(null);
+      setStats(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось удалить проект");
     }
   }
 
@@ -397,7 +446,12 @@ export default function App() {
             {showNewProject && (
               <form className="new-project-form" onSubmit={createProject}>
                 <input placeholder="Название проекта" value={newName} onChange={(e) => setNewName(e.target.value)} required autoFocus />
-                <textarea placeholder="Системный промпт" value={newPrompt} onChange={(e) => setNewPrompt(e.target.value)} rows={2} />
+                <textarea
+                  placeholder="Дополнительные инструкции ассистенту (попадают в LLM вместе с базовым промптом приложения)"
+                  value={newPrompt}
+                  onChange={(e) => setNewPrompt(e.target.value)}
+                  rows={3}
+                />
                 <div className="form-actions">
                   <button type="submit" className="btn-primary btn-sm">Создать</button>
                   <button type="button" className="btn-ghost btn-sm" onClick={() => setShowNewProject(false)}>Отмена</button>
@@ -418,6 +472,43 @@ export default function App() {
               ))}
               {projects.length === 0 && <p className="muted">Пока нет проектов</p>}
             </div>
+
+            {projectId && projects.some((p) => p.id === projectId) && (
+              <div className="project-toolbar">
+                <button type="button" className="btn-ghost btn-sm" onClick={openEditProject}>
+                  Изменить проект
+                </button>
+                <button type="button" className="btn-ghost btn-sm danger-text" onClick={deleteCurrentProject}>
+                  Удалить проект
+                </button>
+              </div>
+            )}
+
+            {editProjectOpen && projectId && (
+              <form className="edit-project-form" onSubmit={saveEditProject}>
+                <span className="schedule-label">Редактирование проекта</span>
+                <input
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  required
+                  placeholder="Название"
+                />
+                <textarea
+                  value={editPrompt}
+                  onChange={(e) => setEditPrompt(e.target.value)}
+                  rows={4}
+                  placeholder="Дополнительные инструкции ассистенту (отправляются в LLM)"
+                />
+                <div className="form-actions">
+                  <button type="submit" className="btn-primary btn-sm">
+                    Сохранить
+                  </button>
+                  <button type="button" className="btn-ghost btn-sm" onClick={() => setEditProjectOpen(false)}>
+                    Отмена
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         )}
 
@@ -436,7 +527,6 @@ export default function App() {
           <div className="header-row">
             <div>
               <h2>{project?.name ?? "Выберите проект"}</h2>
-              {project?.prompt && <p className="header-prompt">{project.prompt}</p>}
             </div>
             {projectId && (
               <div className="header-toolbar" ref={scheduleToolbarRef}>

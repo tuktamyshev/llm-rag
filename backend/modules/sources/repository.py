@@ -38,6 +38,14 @@ class SourceRepository:
         self.db.refresh(source)
         return source
 
+    def titles_for_source_ids(self, source_ids: list[int]) -> dict[int, str]:
+        if not source_ids:
+            return {}
+        uniq = list(dict.fromkeys(source_ids))
+        stmt = select(Source.id, Source.title).where(Source.id.in_(uniq))
+        rows = self.db.execute(stmt).all()
+        return {int(sid): str(title) for sid, title in rows}
+
     def delete(self, source: Source) -> None:
         self.db.delete(source)
         self.db.commit()

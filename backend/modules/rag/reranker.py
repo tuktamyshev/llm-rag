@@ -52,6 +52,7 @@ def rerank(query: str, chunks: list[RetrievedChunk], top_n: int | None = None) -
                 source_id=chunk.source_id,
                 content=chunk.content,
                 score=float(score),
+                source_title=chunk.source_title,
             )
         )
     return result

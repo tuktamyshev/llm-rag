@@ -17,6 +17,13 @@ class SourceRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class SourceCreatedResponse(SourceRead):
+    """Ответ после создания источника: при необходимости — ошибка первичной индексации."""
+
+    ingest_error: str | None = None
+    chunks_indexed: int = 0
+
+
 class WebSourceCreate(BaseModel):
     project_id: int = Field(gt=0)
     title: str = Field(min_length=1, max_length=255)

@@ -2,17 +2,27 @@ from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.orm import Session
 
 from core.db import get_db
+from modules.ingestion.repository import IngestionRepository
 from modules.projects.repository import ProjectRepository
 from modules.projects.schemas import ProjectCreate, ProjectRead, ProjectUpdate
 from modules.projects.service import ProjectService
+from modules.sources.repository import SourceRepository
 from modules.users.repository import UserRepository
+from modules.vectordb.repository import QdrantRepository, VectorRecordRepository
+from modules.vectordb.service import VectorDBService
 
 
 router = APIRouter()
 
 
 def _service(db: Session = Depends(get_db)) -> ProjectService:
-    return ProjectService(projects=ProjectRepository(db), users=UserRepository(db))
+    return ProjectService(
+        projects=ProjectRepository(db),
+        users=UserRepository(db),
+        sources=SourceRepository(db),
+        ingestion=IngestionRepository(db),
+        vectordb=VectorDBService(records=VectorRecordRepository(db), qdrant=QdrantRepository()),
+    )
 
 
 @router.post("/", response_model=ProjectRead, status_code=status.HTTP_201_CREATED)

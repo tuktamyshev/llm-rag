@@ -13,6 +13,7 @@ class RetrievedChunk(BaseModel):
     source_id: int
     content: str
     score: float
+    source_title: str = ""
 
 
 class RetrieveResponse(BaseModel):

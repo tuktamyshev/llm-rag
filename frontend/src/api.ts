@@ -1,4 +1,12 @@
-import type { ChatLogEntry, ChatResponse, IngestionJob, Project, Source, User } from "./types";
+import type {
+  ChatLogEntry,
+  ChatResponse,
+  IngestionJob,
+  Project,
+  Source,
+  SourceCreated,
+  User,
+} from "./types";
 
 function viteMetaEnv(): Record<string, string | boolean | undefined> | undefined {
   return (import.meta as unknown as { env?: Record<string, string | boolean | undefined> }).env;
@@ -110,11 +118,11 @@ export const api = {
   },
 
   addWebSource(projectId: number, title: string, url: string) {
-    return request<Source>("/sources/web", json({ project_id: projectId, title, url }));
+    return request<SourceCreated>("/sources/web", json({ project_id: projectId, title, url }));
   },
 
   addTelegramSource(projectId: number, title: string, chatId: string) {
-    return request<Source>(
+    return request<SourceCreated>(
       "/sources/telegram",
       json({ project_id: projectId, title, chat_id: chatId }),
     );
@@ -125,7 +133,7 @@ export const api = {
     fd.append("project_id", String(projectId));
     fd.append("title", title);
     fd.append("file", file);
-    return request<Source>("/sources/file", { method: "POST", body: fd });
+    return request<SourceCreated>("/sources/file", { method: "POST", body: fd });
   },
 
   deleteSource(id: number) {
