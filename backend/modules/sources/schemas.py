@@ -18,10 +18,11 @@ class SourceRead(BaseModel):
 
 
 class SourceCreatedResponse(SourceRead):
-    """Ответ после создания источника: при необходимости — ошибка первичной индексации."""
+    """Ответ после создания источника: индексация в фоне или результат синхронной попытки."""
 
     ingest_error: str | None = None
     chunks_indexed: int = 0
+    ingest_in_background: bool = False
 
 
 class WebSourceCreate(BaseModel):

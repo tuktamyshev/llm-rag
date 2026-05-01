@@ -26,6 +26,7 @@ export type Source = {
 export type SourceCreated = Source & {
   ingest_error?: string | null;
   chunks_indexed?: number;
+  ingest_in_background?: boolean;
 };
 
 export type IngestionJob = {

@@ -8,6 +8,7 @@ export default function SourcesPanel({ projectId }: Props) {
   const [sources, setSources] = useState<Source[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
 
   const [tab, setTab] = useState<"web" | "telegram" | "file">("web");
   const [title, setTitle] = useState("");
@@ -16,7 +17,11 @@ export default function SourcesPanel({ projectId }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [adding, setAdding] = useState(false);
 
-  useEffect(() => { load(); }, [projectId]);
+  useEffect(() => {
+    setInfo("");
+    setError("");
+    load();
+  }, [projectId]);
 
   async function load() {
     setLoading(true);
@@ -39,6 +44,7 @@ export default function SourcesPanel({ projectId }: Props) {
     }
     setAdding(true);
     setError("");
+    setInfo("");
     try {
       let created: SourceCreated;
       if (tab === "web") {
@@ -50,12 +56,16 @@ export default function SourcesPanel({ projectId }: Props) {
         created = await api.addFileSource(projectId, title.trim(), file);
         setFile(null);
       }
-      if (created.ingest_error) {
-        setError(
-          `Источник добавлен, но индексация не удалась: ${created.ingest_error}`,
+      if (created.ingest_in_background) {
+        setInfo(
+          "Источник сохранён. Индексация идёт в фоне (первая загрузка модели может занять несколько минут). Через время обновите страницу статистики или нажмите «Обновить базу знаний».",
         );
+        setError("");
+      } else if (created.ingest_error) {
+        setError(`Источник добавлен, но индексация не удалась: ${created.ingest_error}`);
       } else {
         setError("");
+        setInfo("");
       }
       setTitle("");
       setUrl("");
@@ -83,6 +93,7 @@ export default function SourcesPanel({ projectId }: Props) {
         <h3>Источники данных</h3>
       </div>
 
+      {info && <p className="src-info">{info}</p>}
       {error && <p className="src-error">{error}</p>}
 
       {loading ? (

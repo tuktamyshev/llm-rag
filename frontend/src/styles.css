@@ -372,6 +372,12 @@ body {
 .sources-header { display: flex; align-items: center; justify-content: space-between; }
 .sources-header h3 { font-size: 14px; font-weight: 600; color: var(--text); }
 .src-error { color: var(--danger); font-size: 12px; }
+.src-info {
+  color: var(--accent-hover);
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 0 0 8px;
+}
 
 .source-list { list-style: none; display: flex; flex-direction: column; gap: 6px; }
 

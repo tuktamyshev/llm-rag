@@ -1,12 +1,11 @@
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
 from core.db import get_db
+from modules.ingestion.background_ingest import ingest_source_background
 from modules.ingestion.repository import IngestionRepository
 from modules.projects.repository import ProjectRepository
 from modules.sources.repository import SourceRepository
-from modules.ingestion.deps import get_ingestion_service
-from modules.ingestion.service import IngestionService
 from modules.sources.models import Source
 from modules.sources.schemas import SourceCreatedResponse, SourceRead, TelegramSourceCreate, WebSourceCreate
 from modules.sources.service import SourceService
@@ -17,16 +16,15 @@ from modules.vectordb.service import VectorDBService
 router = APIRouter()
 
 
-def _ingest_and_wrap(source: Source, ingestion: IngestionService) -> SourceCreatedResponse:
-    n = 0
-    err: str | None = None
-    try:
-        created = ingestion.ingest_source_now(source)
-        n = len(created)
-    except Exception as exc:
-        err = str(exc)
+def _wrap_created_async(source: Source, background_tasks: BackgroundTasks) -> SourceCreatedResponse:
+    background_tasks.add_task(ingest_source_background, source.id)
     base = SourceRead.model_validate(source)
-    return SourceCreatedResponse(**base.model_dump(), ingest_error=err, chunks_indexed=n)
+    return SourceCreatedResponse(
+        **base.model_dump(),
+        ingest_error=None,
+        chunks_indexed=0,
+        ingest_in_background=True,
+    )
 
 
 def _service(db: Session = Depends(get_db)) -> SourceService:
@@ -40,11 +38,11 @@ def _service(db: Session = Depends(get_db)) -> SourceService:
 
 @router.post("/file", response_model=SourceCreatedResponse, status_code=status.HTTP_201_CREATED)
 async def add_file_source(
+    background_tasks: BackgroundTasks,
     project_id: int = Form(...),
     title: str = Form(..., min_length=1, max_length=255),
     file: UploadFile = File(...),
     service: SourceService = Depends(_service),
-    ingestion: IngestionService = Depends(get_ingestion_service),
 ) -> SourceCreatedResponse:
     if project_id <= 0:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid project_id")
@@ -56,27 +54,27 @@ async def add_file_source(
         original_filename=file.filename or "upload",
         data=raw,
     )
-    return _ingest_and_wrap(source, ingestion)
+    return _wrap_created_async(source, background_tasks)
 
 
 @router.post("/web", response_model=SourceCreatedResponse, status_code=status.HTTP_201_CREATED)
 def add_web_source(
+    background_tasks: BackgroundTasks,
     payload: WebSourceCreate,
     service: SourceService = Depends(_service),
-    ingestion: IngestionService = Depends(get_ingestion_service),
 ) -> SourceCreatedResponse:
     source = service.add_web_source(payload)
-    return _ingest_and_wrap(source, ingestion)
+    return _wrap_created_async(source, background_tasks)
 
 
 @router.post("/telegram", response_model=SourceCreatedResponse, status_code=status.HTTP_201_CREATED)
 def add_telegram_source(
+    background_tasks: BackgroundTasks,
     payload: TelegramSourceCreate,
     service: SourceService = Depends(_service),
-    ingestion: IngestionService = Depends(get_ingestion_service),
 ) -> SourceCreatedResponse:
     source = service.add_telegram_source(payload)
-    return _ingest_and_wrap(source, ingestion)
+    return _wrap_created_async(source, background_tasks)
 
 
 @router.get("/", response_model=list[SourceRead])
