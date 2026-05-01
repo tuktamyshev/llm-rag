@@ -9,10 +9,11 @@ export default function SourcesPanel({ projectId }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const [tab, setTab] = useState<"web" | "telegram">("web");
+  const [tab, setTab] = useState<"web" | "telegram" | "file">("web");
   const [title, setTitle] = useState("");
   const [url, setUrl] = useState("");
   const [chatId, setChatId] = useState("");
+  const [file, setFile] = useState<File | null>(null);
   const [adding, setAdding] = useState(false);
 
   useEffect(() => { load(); }, [projectId]);
@@ -32,13 +33,21 @@ export default function SourcesPanel({ projectId }: Props) {
   async function handleAdd(e: FormEvent) {
     e.preventDefault();
     if (!title.trim()) return;
+    if (tab === "file" && !file) {
+      setError("Выберите файл");
+      return;
+    }
     setAdding(true);
     setError("");
     try {
       if (tab === "web") {
         await api.addWebSource(projectId, title.trim(), url.trim());
-      } else {
+      } else if (tab === "telegram") {
         await api.addTelegramSource(projectId, title.trim(), chatId.trim());
+      } else {
+        if (!file) return;
+        await api.addFileSource(projectId, title.trim(), file);
+        setFile(null);
       }
       setTitle("");
       setUrl("");
@@ -72,7 +81,7 @@ export default function SourcesPanel({ projectId }: Props) {
         <p className="muted">Загрузка источников…</p>
       ) : sources.length === 0 ? (
         <p className="muted">
-          Источников пока нет. Добавьте веб-страницу или канал Telegram ниже, затем нажмите
+          Источников пока нет. Добавьте веб-страницу, файл или канал Telegram ниже, затем нажмите
           «Обновить базу знаний», чтобы загрузить данные.
         </p>
       ) : (
@@ -81,7 +90,11 @@ export default function SourcesPanel({ projectId }: Props) {
             <li key={s.id}>
               <span className={`badge ${s.source_type}`}>{s.source_type}</span>
               <span className="source-title">{s.title}</span>
-              <span className="source-uri">{s.uri || s.external_id || ""}</span>
+              <span className="source-uri">
+                {s.source_type === "file" && typeof s.settings?.original_filename === "string"
+                  ? s.settings.original_filename
+                  : s.uri || s.external_id || ""}
+              </span>
               <button className="btn-icon" onClick={() => handleDelete(s.id)} title="Удалить источник">
                 ×
               </button>
@@ -97,6 +110,9 @@ export default function SourcesPanel({ projectId }: Props) {
           </button>
           <button type="button" className={tab === "telegram" ? "active" : ""} onClick={() => setTab("telegram")}>
             Telegram
+          </button>
+          <button type="button" className={tab === "file" ? "active" : ""} onClick={() => setTab("file")}>
+            Файл
           </button>
         </div>
 
@@ -115,12 +131,18 @@ export default function SourcesPanel({ projectId }: Props) {
             onChange={(e) => setUrl(e.target.value)}
             required
           />
-        ) : (
+        ) : tab === "telegram" ? (
           <input
             placeholder="@канал, ID чата или https://t.me/channel"
             value={chatId}
             onChange={(e) => setChatId(e.target.value)}
             required
+          />
+        ) : (
+          <input
+            type="file"
+            accept=".pdf,.docx,.txt,.md,.csv,.json,.xml,.html,.rtf,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
           />
         )}
 

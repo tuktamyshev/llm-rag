@@ -49,6 +49,17 @@ class IngestionRepository:
         self.db.refresh(job)
         return job
 
+    def list_chunk_ids_for_source(self, source_id: int) -> list[int]:
+        stmt = select(SourceChunk.id).where(SourceChunk.source_id == source_id)
+        return list(self.db.scalars(stmt).all())
+
+    def delete_all_chunks_for_source(self, source_id: int) -> None:
+        """Удаляет чанки источника; по FK CASCADE уходят embedding_records и vector_records."""
+        stmt = select(SourceChunk).where(SourceChunk.source_id == source_id)
+        for chunk in list(self.db.scalars(stmt).all()):
+            self.db.delete(chunk)
+        self.db.commit()
+
     def replace_chunks(self, source_id: int, chunks: list[str]) -> list[SourceChunk]:
         existing_stmt = select(SourceChunk).where(SourceChunk.source_id == source_id)
         existing = list(self.db.scalars(existing_stmt).all())

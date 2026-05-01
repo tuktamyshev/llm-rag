@@ -365,6 +365,7 @@ body {
 
 .badge.web { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
 .badge.telegram { background: rgba(16, 185, 129, 0.15); color: #34d399; }
+.badge.file { background: rgba(168, 85, 247, 0.15); color: #c084fc; }
 
 .source-title {
   font-weight: 500;
@@ -464,6 +465,58 @@ body {
   gap: 16px;
 }
 
+.header-toolbar {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.schedule-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 399;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.schedule-popover {
+  max-width: min(360px, calc(100vw - 32px));
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
+}
+
+.btn-schedule-toggle {
+  padding: 9px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+  white-space: nowrap;
+}
+
+.btn-schedule-toggle:hover {
+  border-color: var(--border-light);
+  color: var(--text);
+}
+
+.btn-schedule-toggle.active {
+  border-color: var(--accent);
+  color: var(--accent-hover);
+  background: var(--accent-glow);
+}
+
 .chat-header h2 { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
 .header-prompt { font-size: 12px; color: var(--text-dim); margin-top: 3px; }
 
@@ -525,25 +578,78 @@ body {
 .dot.gray { background: var(--text-dim); }
 .stat.warn { color: var(--warning); font-weight: 500; }
 
-/* ── Refresh toast ── */
-.refresh-toast {
+/* ── Ingestion result (refresh) ── */
+.ingestion-result {
   margin-top: 8px;
-  padding: 8px 14px;
+  padding: 10px 14px;
   border-radius: 8px;
   background: var(--accent-glow);
   border: 1px solid rgba(16, 185, 129, 0.2);
   color: var(--accent-hover);
   font-size: 12px;
-  font-weight: 500;
 }
 
-.refresh-toast.has-errors {
+.ingestion-result-summary {
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.ingestion-result--errors {
   background: var(--danger-bg);
   border-color: rgba(244, 63, 94, 0.2);
   color: #fb7185;
 }
 
-.refresh-errors { font-weight: 400; }
+.ingestion-result-errors {
+  margin: 8px 0 0;
+  padding-left: 1.1em;
+  font-weight: 400;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.ingestion-result--errors .ingestion-result-errors {
+  color: #fda4af;
+}
+
+.schedule-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 14px;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.schedule-label {
+  width: 100%;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.schedule-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.schedule-field input {
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  width: 6.5rem;
+}
+
+.schedule-hint {
+  flex-basis: 100%;
+  font-size: 11px;
+}
 
 /* ── Messages ── */
 .messages-scroll {

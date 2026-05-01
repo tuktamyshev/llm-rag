@@ -11,7 +11,18 @@ import logging
 import os
 from datetime import datetime, timedelta, timezone
 
+from infrastructure.connectors.telegram_proxy import telethon_client_kwargs
+
 logger = logging.getLogger(__name__)
+
+
+class TelegramFetchError(Exception):
+    """Telegram недоступен или сообщения не получены — не индексировать как текст чанков.
+
+    Не наследуем RuntimeError: в fetch_telegram_messages есть `except RuntimeError` для
+    переключения на asyncio.run — иначе ошибки Telegram ошибочно перехватывались бы там.
+    """
+
 
 TELEGRAM_API_ID = os.getenv("TELEGRAM_API_ID", "")
 TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH", "")
@@ -27,11 +38,13 @@ def fetch_telegram_messages(chat_id: str, title: str) -> str:
     """
     if not TELEGRAM_API_ID or not TELEGRAM_API_HASH:
         logger.warning(
-            "TELEGRAM_API_ID / TELEGRAM_API_HASH not set — "
-            "returning empty result for '%s'",
+            "TELEGRAM_API_ID / TELEGRAM_API_HASH not set — cannot fetch Telegram for '%s'.",
             title,
         )
-        return f"[telegram not configured] Cannot fetch messages for '{title}'"
+        raise TelegramFetchError(
+            "Telegram не настроен: задайте TELEGRAM_API_ID и TELEGRAM_API_HASH "
+            "(https://my.telegram.org) и перезапустите backend."
+        )
 
     try:
         loop = asyncio.get_event_loop()
@@ -55,21 +68,28 @@ async def _async_fetch_messages(chat_id: str, title: str) -> str:
         from telethon import TelegramClient
     except ImportError:
         logger.error("telethon is not installed — pip install telethon")
-        return "[error] telethon package not installed"
+        raise TelegramFetchError(
+            "Пакет telethon не установлен (pip install telethon)."
+        ) from None
 
     session_path = os.path.join(
         os.getenv("TELEGRAM_SESSION_DIR", "/tmp"),
         TELEGRAM_SESSION,
     )
 
-    client = TelegramClient(session_path, int(TELEGRAM_API_ID), TELEGRAM_API_HASH)
+    client = TelegramClient(
+        session_path,
+        int(TELEGRAM_API_ID),
+        TELEGRAM_API_HASH,
+        **telethon_client_kwargs(),
+    )
 
     try:
         await client.start()
 
         entity = await _resolve_entity(client, chat_id)
         if entity is None:
-            return f"[telegram error] Could not resolve chat: {chat_id}"
+            raise TelegramFetchError(f"Не удалось найти чат или канал: {chat_id}")
 
         offset_date = datetime.now(timezone.utc) - timedelta(days=TELEGRAM_DAYS_BACK)
         raw_messages: list[dict] = []
@@ -90,7 +110,10 @@ async def _async_fetch_messages(chat_id: str, title: str) -> str:
             })
 
         if not raw_messages:
-            return f"[telegram] No text messages found in '{title}' for the last {TELEGRAM_DAYS_BACK} days"
+            raise TelegramFetchError(
+                f"Нет текстовых сообщений в «{title}» за последние {TELEGRAM_DAYS_BACK} дн. "
+                "(проверьте chat_id, доступ аккаунта и при необходимости TELEGRAM_DAYS_BACK)."
+            )
 
         blocks = _group_messages_into_blocks(raw_messages, title)
         logger.info(
@@ -99,9 +122,11 @@ async def _async_fetch_messages(chat_id: str, title: str) -> str:
         )
         return "\n\n".join(blocks)
 
+    except TelegramFetchError:
+        raise
     except Exception as exc:
         logger.exception("Telegram fetch error for '%s'", title)
-        return f"[telegram error for {title}] {exc}"
+        raise TelegramFetchError(str(exc)) from exc
     finally:
         await client.disconnect()
 

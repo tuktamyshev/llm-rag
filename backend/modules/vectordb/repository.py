@@ -18,7 +18,14 @@ class VectorRecordRepository:
     def __init__(self, db: Session) -> None:
         self.db = db
 
-    def upsert(self, chunk_id: int, point_id: str, collection_name: str) -> VectorRecord:
+    def upsert(
+        self,
+        chunk_id: int,
+        point_id: str,
+        collection_name: str,
+        *,
+        commit: bool = True,
+    ) -> VectorRecord:
         stmt = select(VectorRecord).where(VectorRecord.chunk_id == chunk_id)
         record = self.db.scalar(stmt)
         if record:
@@ -27,9 +34,16 @@ class VectorRecordRepository:
         else:
             record = VectorRecord(chunk_id=chunk_id, point_id=point_id, collection_name=collection_name)
             self.db.add(record)
-        self.db.commit()
-        self.db.refresh(record)
+        if commit:
+            self.db.commit()
+            self.db.refresh(record)
+        else:
+            self.db.flush()
+            self.db.refresh(record)
         return record
+
+    def commit(self) -> None:
+        self.db.commit()
 
 
 class QdrantRepository:
@@ -64,6 +78,14 @@ class QdrantRepository:
                 for point in points
             ],
         )
+
+    def delete_points_by_ids(self, point_ids: list[int]) -> None:
+        """Remove vectors so re-ingestion does not leave stale duplicates in Qdrant."""
+        if not point_ids or not self.client.collection_exists(self.collection_name):
+            return
+        from qdrant_client.http.models import PointIdsList
+
+        self.client.delete(collection_name=self.collection_name, points_selector=PointIdsList(points=point_ids))
 
     def search_top_k(self, *, project_id: int, query_embedding: list[float], top_k: int) -> list[dict]:
         if not self.client.collection_exists(self.collection_name):

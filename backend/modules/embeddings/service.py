@@ -72,6 +72,7 @@ class EmbeddingService:
                 chunk_id=chunk["chunk_id"],
                 model_name=MODEL_NAME,
                 vector_size=vector_size,
+                commit=False,
             )
             items.append(
                 EmbeddedChunk(
@@ -82,4 +83,5 @@ class EmbeddingService:
                     embedding=vector,
                 )
             )
+        self.repository.commit()
         return items

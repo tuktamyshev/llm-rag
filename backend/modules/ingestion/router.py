@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from core.db import get_db
@@ -14,6 +14,7 @@ from modules.ingestion.schemas import (
     ScheduleIngestionRequest,
 )
 from modules.ingestion.service import IngestionService
+from modules.projects.repository import ProjectRepository
 from modules.sources.repository import SourceRepository
 from modules.vectordb.repository import QdrantRepository, VectorRecordRepository
 from modules.vectordb.service import VectorDBService
@@ -32,6 +33,7 @@ def _service(db: Session = Depends(get_db)) -> IngestionService:
         sources=source_repo,
         embeddings=embedding_service,
         vectordb=vectordb_service,
+        projects=ProjectRepository(db),
     )
 
 
@@ -52,8 +54,18 @@ def run_ingestion(
 
 
 @router.post("/refresh/{project_id}", response_model=RefreshProjectResponse)
-def refresh_project(project_id: int, service: IngestionService = Depends(_service)) -> RefreshProjectResponse:
-    result = service.refresh_project(project_id)
+def refresh_project(
+    project_id: int,
+    trigger: str = Query(
+        "auto",
+        description="'auto' — по расписанию UI; 'manual' — кнопка (учитывается интервал в настройках проекта).",
+    ),
+    service: IngestionService = Depends(_service),
+) -> RefreshProjectResponse:
+    t = trigger.strip().lower()
+    if t not in ("auto", "manual"):
+        t = "auto"
+    result = service.refresh_project(project_id, trigger=t)
     return RefreshProjectResponse(**result)
 
 

@@ -25,6 +25,8 @@ class RunIngestionResponse(BaseModel):
 class RefreshProjectResponse(BaseModel):
     project_id: int
     sources_processed: int
+    sources_succeeded: int = 0
+    sources_failed: int = 0
     total_chunks: int
     errors: list[str] = Field(default_factory=list)
 

@@ -1,4 +1,5 @@
-import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { api } from "./api";
 import type { ProjectStats, RefreshResult } from "./api";
 import LoginPage from "./LoginPage";
@@ -6,7 +7,17 @@ import SourcesPanel from "./SourcesPanel";
 import type { ChatMessage, Project, User } from "./types";
 
 const AUTH_KEY = "llm-rag-auth";
-const AUTO_REFRESH_MS = 60 * 60 * 1000;
+
+function ingestionFromProject(p: Project | undefined): { hours: number; cooldownSec: number } {
+  if (!p?.settings || typeof p.settings !== "object") return { hours: 12, cooldownSec: 300 };
+  const ing = (p.settings as Record<string, unknown>).ingestion;
+  if (!ing || typeof ing !== "object") return { hours: 12, cooldownSec: 300 };
+  const obj = ing as Record<string, unknown>;
+  const hours = typeof obj.auto_refresh_interval_hours === "number" ? obj.auto_refresh_interval_hours : 12;
+  const cooldownSec =
+    typeof obj.manual_refresh_cooldown_seconds === "number" ? obj.manual_refresh_cooldown_seconds : 300;
+  return { hours, cooldownSec };
+}
 
 function mkMsg(role: "user" | "assistant", text: string): ChatMessage {
   return { id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, role, text, ts: new Date().toISOString() };
@@ -42,7 +53,16 @@ export default function App() {
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<RefreshResult | null>(null);
 
+  const [draftAutoHours, setDraftAutoHours] = useState(12);
+  const [draftCooldownSec, setDraftCooldownSec] = useState(300);
+  const [savingSchedule, setSavingSchedule] = useState(false);
+  const [manualBlockedUntil, setManualBlockedUntil] = useState<number | null>(null);
+  const [, setCooldownTick] = useState(0);
+  const [showSchedule, setShowSchedule] = useState(false);
+  const [schedulePopoverPos, setSchedulePopoverPos] = useState<{ top: number; right: number } | null>(null);
+
   const bottomRef = useRef<HTMLDivElement>(null);
+  const scheduleToolbarRef = useRef<HTMLDivElement>(null);
   const autoRef = useRef<ReturnType<typeof setInterval>>();
 
   useEffect(() => {
@@ -79,10 +99,7 @@ export default function App() {
       const msgs: ChatMessage[] = [];
       for (const h of history) {
         msgs.push(mkMsg("user", h.question));
-        const answer = h.sources?.length
-          ? `${h.answer}\n\nИсточники:\n${h.sources.map((s) => `• ${s}`).join("\n")}`
-          : h.answer;
-        msgs.push({ ...mkMsg("assistant", answer), ts: h.created_at });
+        msgs.push({ ...mkMsg("assistant", h.answer), ts: h.created_at });
       }
       setMessages(msgs);
     } catch {
@@ -95,20 +112,90 @@ export default function App() {
     else setMessages([]);
   }, [projectId, loadHistory]);
 
+  const activeProject = projects.find((p) => p.id === projectId);
+  const appliedSchedule = ingestionFromProject(activeProject);
+
+  useEffect(() => {
+    const p = projects.find((x) => x.id === projectId);
+    const { hours, cooldownSec } = ingestionFromProject(p);
+    setDraftAutoHours(hours);
+    setDraftCooldownSec(cooldownSec);
+  }, [projectId, projects]);
+
+  useEffect(() => {
+    setShowSchedule(false);
+    setSchedulePopoverPos(null);
+  }, [projectId]);
+
+  useLayoutEffect(() => {
+    if (!showSchedule) {
+      setSchedulePopoverPos(null);
+      return;
+    }
+    const el = scheduleToolbarRef.current;
+    if (!el) return;
+
+    const update = () => {
+      const r = el.getBoundingClientRect();
+      setSchedulePopoverPos({
+        top: r.bottom + 8,
+        right: Math.max(16, window.innerWidth - r.right),
+      });
+    };
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
+  }, [showSchedule]);
+
+  useEffect(() => {
+    if (!showSchedule) return;
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setShowSchedule(false);
+    };
+    window.addEventListener("keydown", onEsc);
+    return () => window.removeEventListener("keydown", onEsc);
+  }, [showSchedule]);
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, sending]);
 
   useEffect(() => {
+    if (!manualBlockedUntil) return;
+    if (Date.now() >= manualBlockedUntil) {
+      setManualBlockedUntil(null);
+      return;
+    }
+    const id = setInterval(() => {
+      setCooldownTick((t) => t + 1);
+      setManualBlockedUntil((u) => {
+        if (!u || Date.now() >= u) return null;
+        return u;
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, [manualBlockedUntil]);
+
+  useEffect(() => {
     if (!projectId) return;
+    const ms = Math.max(60_000, appliedSchedule.hours * 3600 * 1000);
     autoRef.current = setInterval(() => {
-      api.refreshProject(projectId).then((r) => {
-        setLastRefresh(r);
-        loadStats(projectId);
-      }).catch(() => {});
-    }, AUTO_REFRESH_MS);
+      api
+        .refreshProject(projectId, "auto")
+        .then((r) => {
+          setLastRefresh(r);
+          loadStats(projectId);
+        })
+        .catch((err) => {
+          setError(err instanceof Error ? err.message : "Ошибка автообновления базы");
+        });
+    }, ms);
     return () => clearInterval(autoRef.current);
-  }, [projectId, loadStats]);
+  }, [projectId, loadStats, appliedSchedule.hours]);
 
   function handleAuth(u: User, t: string) {
     setUser(u);
@@ -137,17 +224,55 @@ export default function App() {
 
   async function handleRefresh() {
     if (!projectId || refreshing) return;
+    if (manualBlockedUntil && Date.now() < manualBlockedUntil) return;
     setRefreshing(true);
     setError("");
     setLastRefresh(null);
     try {
-      const result = await api.refreshProject(projectId);
+      const result = await api.refreshProject(projectId, "manual");
       setLastRefresh(result);
+      if (result.errors?.length) {
+        const failed = result.sources_failed ?? result.errors.length;
+        const ok = result.sources_succeeded ?? result.sources_processed - result.errors.length;
+        setError(
+          `Сбор данных завершён с ошибками: не удалось обработать ${failed} из ${result.sources_processed} источников (${ok} успешно). Подробности — ниже.`,
+        );
+      } else {
+        setError("");
+      }
       loadStats(projectId);
+      const cd = ingestionFromProject(projects.find((p) => p.id === projectId)).cooldownSec;
+      if (cd > 0) setManualBlockedUntil(Date.now() + cd * 1000);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось обновить базу");
     } finally {
       setRefreshing(false);
+    }
+  }
+
+  async function saveSchedule(e: FormEvent) {
+    e.preventDefault();
+    if (!projectId || !activeProject || savingSchedule) return;
+    setSavingSchedule(true);
+    setError("");
+    try {
+      const prev = (activeProject.settings ?? {}) as Record<string, unknown>;
+      const prevIng = (prev.ingestion ?? {}) as Record<string, unknown>;
+      const settings = {
+        ...prev,
+        ingestion: {
+          ...prevIng,
+          auto_refresh_interval_hours: draftAutoHours,
+          manual_refresh_cooldown_seconds: draftCooldownSec,
+        },
+      };
+      const updated = await api.updateProject(projectId, { settings });
+      setProjects((prevList) => prevList.map((p) => (p.id === updated.id ? updated : p)));
+      setShowSchedule(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось сохранить расписание");
+    } finally {
+      setSavingSchedule(false);
     }
   }
 
@@ -161,10 +286,7 @@ export default function App() {
     setMessages((prev) => [...prev, mkMsg("user", text)]);
     try {
       const res = await api.chat(projectId, text);
-      const answer = res.sources?.length
-        ? `${res.answer}\n\nИсточники:\n${res.sources.map((s) => `• ${s}`).join("\n")}`
-        : res.answer;
-      setMessages((prev) => [...prev, mkMsg("assistant", answer)]);
+      setMessages((prev) => [...prev, mkMsg("assistant", res.answer)]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка");
     } finally {
@@ -175,8 +297,78 @@ export default function App() {
   if (!user) return <LoginPage onAuth={handleAuth} />;
 
   const project = projects.find((p) => p.id === projectId);
+  const manualRemainingSec =
+    manualBlockedUntil && Date.now() < manualBlockedUntil
+      ? Math.max(0, Math.ceil((manualBlockedUntil - Date.now()) / 1000))
+      : 0;
+  const manualButtonDisabled =
+    refreshing || (!!manualBlockedUntil && Date.now() < manualBlockedUntil);
+
+  const schedulePopover =
+    showSchedule &&
+    projectId &&
+    schedulePopoverPos &&
+    createPortal(
+      <>
+        <div
+          className="schedule-backdrop"
+          role="presentation"
+          aria-hidden
+          onClick={() => setShowSchedule(false)}
+        />
+        <div
+          className="schedule-popover"
+          role="dialog"
+          aria-modal={true}
+          aria-labelledby="schedule-heading"
+          style={{
+            position: "fixed",
+            top: schedulePopoverPos.top,
+            right: schedulePopoverPos.right,
+            zIndex: 400,
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <form className="schedule-panel" onSubmit={saveSchedule}>
+            <span className="schedule-label" id="schedule-heading">
+              Расписание обновления
+            </span>
+            <label className="schedule-field">
+              Автообновление, ч
+              <input
+                type="number"
+                min={0.25}
+                max={8760}
+                step={0.25}
+                value={draftAutoHours}
+                onChange={(e) => setDraftAutoHours(Number(e.target.value))}
+              />
+            </label>
+            <label className="schedule-field">
+              Пауза между ручными обновлениями, с
+              <input
+                type="number"
+                min={0}
+                max={86400}
+                step={1}
+                value={draftCooldownSec}
+                onChange={(e) => setDraftCooldownSec(Number(e.target.value))}
+              />
+            </label>
+            <button type="submit" className="btn-primary btn-sm" disabled={savingSchedule}>
+              {savingSchedule ? "Сохранение…" : "Сохранить"}
+            </button>
+            <span className="muted schedule-hint">
+              По умолчанию авто каждые 12 ч; интервал авто не короче 1 мин.
+            </span>
+          </form>
+        </div>
+      </>,
+      document.body,
+    );
 
   return (
+    <>
     <div className="layout">
       <aside className="sidebar">
         <div className="sidebar-top">
@@ -247,14 +439,32 @@ export default function App() {
               {project?.prompt && <p className="header-prompt">{project.prompt}</p>}
             </div>
             {projectId && (
-              <button
-                className={`btn-refresh${refreshing ? " spinning" : ""}`}
-                onClick={handleRefresh}
-                disabled={refreshing}
-                title="Собрать данные из всех источников и обновить базу знаний"
-              >
-                {refreshing ? "Сбор данных…" : "Обновить базу знаний"}
-              </button>
+              <div className="header-toolbar" ref={scheduleToolbarRef}>
+                <div className="header-actions">
+                  <button
+                    type="button"
+                    className={`btn-schedule-toggle${showSchedule ? " active" : ""}`}
+                    onClick={() => setShowSchedule((v) => !v)}
+                    aria-expanded={showSchedule}
+                    title="Настройки расписания обновления базы"
+                  >
+                    Расписание
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn-refresh${refreshing ? " spinning" : ""}`}
+                    onClick={handleRefresh}
+                    disabled={manualButtonDisabled}
+                    title={
+                      manualRemainingSec > 0
+                        ? `Доступно через ${manualRemainingSec} с`
+                        : "Собрать данные из всех источников и обновить базу знаний"
+                    }
+                  >
+                    {refreshing ? "Сбор данных…" : manualRemainingSec > 0 ? `Подождите ${manualRemainingSec} с` : "Обновить базу знаний"}
+                  </button>
+                </div>
+              </div>
             )}
           </div>
 
@@ -279,13 +489,32 @@ export default function App() {
           )}
 
           {lastRefresh && (
-            <div className={`refresh-toast${lastRefresh.errors.length ? " has-errors" : ""}`}>
-              Обработано источников: {lastRefresh.sources_processed}, создано фрагментов: {lastRefresh.total_chunks}
-              {lastRefresh.errors.length > 0 && (
-                <span className="refresh-errors"> | Ошибки: {lastRefresh.errors.join("; ")}</span>
+            <div
+              className={`ingestion-result${(lastRefresh.errors?.length ?? 0) ? " ingestion-result--errors" : ""}`}
+              role={lastRefresh.errors?.length ? "alert" : "status"}
+            >
+              <div className="ingestion-result-summary">
+                <strong>
+                  {(lastRefresh.errors?.length ?? 0)
+                    ? "Обновление завершено с ошибками по источникам"
+                    : "База знаний обновлена"}
+                </strong>
+                {" — "}
+                успешно{" "}
+                {lastRefresh.sources_succeeded ??
+                  lastRefresh.sources_processed - (lastRefresh.errors?.length ?? 0)}{" "}
+                из {lastRefresh.sources_processed} источников, фрагментов: {lastRefresh.total_chunks}
+              </div>
+              {(lastRefresh.errors?.length ?? 0) > 0 && (
+                <ul className="ingestion-result-errors">
+                  {lastRefresh.errors!.map((msg, i) => (
+                    <li key={`${i}-${msg.slice(0, 40)}`}>{msg}</li>
+                  ))}
+                </ul>
               )}
             </div>
           )}
+
         </header>
 
         <div className="messages-scroll">
@@ -341,5 +570,7 @@ export default function App() {
         </form>
       </main>
     </div>
+    {schedulePopover}
+    </>
   );
 }

@@ -33,7 +33,7 @@ class ChatService:
             answer=rag_response.answer,
             sources=sources,
         )
-        return ChatResponse(answer=rag_response.answer, sources=sources)
+        return ChatResponse(answer=rag_response.answer, sources=[])
 
     def _build_history(self, project_id: int) -> list[dict]:
         """Load recent conversation turns for multi-turn context."""

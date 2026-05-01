@@ -1,6 +1,7 @@
 # Web framework
 fastapi
 uvicorn[standard]
+python-multipart
 
 # Database
 sqlalchemy>=2.0.23
@@ -28,6 +29,11 @@ trafilatura
 
 # Telegram
 telethon
+PySocks
+
+# Uploaded documents (FILE sources)
+pypdf
+python-docx
 
 # Evaluation (RAGAS)
 ragas

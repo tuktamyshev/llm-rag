@@ -35,7 +35,17 @@ def chat_history(
     project_id: int, limit: int = 100, repo: ChatRepository = Depends(_chat_repo)
 ) -> list[ChatLogRead]:
     logs = repo.list_by_project(project_id, limit=limit)
-    return [ChatLogRead.model_validate(log) for log in logs]
+    return [
+        ChatLogRead(
+            id=log.id,
+            project_id=log.project_id,
+            question=log.question,
+            answer=log.answer,
+            sources=[],
+            created_at=log.created_at,
+        )
+        for log in logs
+    ]
 
 
 @router.post("/{project_id}", response_model=ChatResponse)

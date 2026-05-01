@@ -63,6 +63,8 @@ export type ProjectStats = {
 export type RefreshResult = {
   project_id: number;
   sources_processed: number;
+  sources_succeeded?: number;
+  sources_failed?: number;
   total_chunks: number;
   errors: string[];
 };
@@ -88,6 +90,17 @@ export const api = {
     return request<Project>("/projects/", json({ user_id: userId, name, prompt, settings: {} }));
   },
 
+  updateProject(
+    id: number,
+    body: Partial<{ name: string; prompt: string | null; settings: Record<string, unknown> }>,
+  ) {
+    return request<Project>(`/projects/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  },
+
   deleteProject(id: number) {
     return request<void>(`/projects/${id}`, { method: "DELETE" });
   },
@@ -107,6 +120,14 @@ export const api = {
     );
   },
 
+  addFileSource(projectId: number, title: string, file: File) {
+    const fd = new FormData();
+    fd.append("project_id", String(projectId));
+    fd.append("title", title);
+    fd.append("file", file);
+    return request<Source>("/sources/file", { method: "POST", body: fd });
+  },
+
   deleteSource(id: number) {
     return request<void>(`/sources/${id}`, { method: "DELETE" });
   },
@@ -122,8 +143,9 @@ export const api = {
     );
   },
 
-  refreshProject(projectId: number) {
-    return request<RefreshResult>(`/ingestion/refresh/${projectId}`, { method: "POST" });
+  refreshProject(projectId: number, trigger: "auto" | "manual" = "auto") {
+    const q = trigger === "manual" ? "?trigger=manual" : "?trigger=auto";
+    return request<RefreshResult>(`/ingestion/refresh/${projectId}${q}`, { method: "POST" });
   },
 
   projectStats(projectId: number) {

@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: help up down logs ps backend frontend example eval migrate migration rebuild-backend
+.PHONY: help up down logs ps backend frontend example eval migrate migration rebuild-backend telegram-login telegram-check
 
 help:
 	@echo "Available commands:"
@@ -15,6 +15,8 @@ help:
 	@echo "  make migrate         - apply pending alembic migrations"
 	@echo "  make migration m=msg - create new migration (autogenerate)"
 	@echo "  make rebuild-backend - rebuild backend image (no cache) and restart service"
+	@echo "  make telegram-login  - interactive Telethon login (Docker), saves session volume"
+	@echo "  make telegram-check  - test Telegram connectivity (Telethon) from backend container"
 
 up:
 	docker compose up --build -d
@@ -48,3 +50,13 @@ migration:
 
 rebuild-backend:
 	docker compose build --no-cache backend && docker compose up -d backend
+
+# Интерактивный вход Telethon (телефон + код из Telegram); сохраняет сессию в volume `telegram_session`.
+# Сначала пересобираем образ — иначе в контейнере не будет scripts/telegram_login.py (старый образ).
+telegram-login:
+	@test -f backend/scripts/telegram_login.py || { echo "Нет файла backend/scripts/telegram_login.py"; exit 1; }
+	docker compose build backend
+	docker compose run --rm -it backend python /app/backend/scripts/telegram_login.py
+
+telegram-check:
+	docker compose run --rm backend python /app/backend/scripts/telegram_check.py

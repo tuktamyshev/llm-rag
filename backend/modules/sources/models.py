@@ -11,6 +11,7 @@ from core.pg_enum import pg_str_enum
 class SourceType(StrEnum):
     WEB = "web"
     TELEGRAM = "telegram"
+    FILE = "file"
 
 
 class Source(Base):

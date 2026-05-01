@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
 
@@ -9,6 +9,9 @@ from modules.ingestion.cleaning import clean_text
 from modules.ingestion.models import IngestionJob, SourceChunk
 from modules.ingestion.repository import IngestionRepository
 from modules.ingestion.scheduler import should_run
+from modules.projects.ingestion_settings import manual_refresh_cooldown_seconds, parse_iso_utc
+from modules.projects.repository import ProjectRepository
+from modules.projects.schemas import ProjectUpdate
 from modules.sources.models import Source
 from modules.sources.repository import SourceRepository
 from modules.vectordb.schemas import EmbeddingPointIn, UpsertEmbeddingsRequest
@@ -22,11 +25,13 @@ class IngestionService:
         sources: SourceRepository,
         embeddings: EmbeddingService,
         vectordb: VectorDBService,
+        projects: ProjectRepository,
     ) -> None:
         self.ingestion = ingestion
         self.sources = sources
         self.embeddings = embeddings
         self.vectordb = vectordb
+        self.projects = projects
 
     def schedule_source(self, source_id: int, cron: str = "*/30 * * * *") -> IngestionJob:
         source = self.sources.get_by_id(source_id)
@@ -39,6 +44,10 @@ class IngestionService:
         source_text = raw_text if raw_text is not None else collect_source_text(source)
         cleaned = clean_text(source_text)
         chunks = chunk_text(cleaned)
+        # Удаляем старые векторы в Qdrant до смены chunk id в БД — иначе остаются «сироты» с тем же project_id.
+        old_chunk_ids = self.ingestion.list_chunk_ids_for_source(source.id)
+        if old_chunk_ids:
+            self.vectordb.delete_embeddings_for_chunk_ids(old_chunk_ids)
         created = self.ingestion.replace_chunks(source_id=source.id, chunks=chunks)
         embedded_chunks = self.embeddings.embed_and_track_chunks(
             [
@@ -89,8 +98,44 @@ class IngestionService:
             self.ingestion.set_job_failed(job, error=str(exc))
             raise
 
-    def refresh_project(self, project_id: int) -> dict:
+    def _ensure_manual_refresh_allowed(self, project_id: int) -> None:
+        project = self.projects.get_by_id(project_id)
+        if not project:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+        cooldown = manual_refresh_cooldown_seconds(project.settings)
+        if cooldown <= 0:
+            return
+        ps = project.settings or {}
+        ing = ps.get("ingestion") if isinstance(ps.get("ingestion"), dict) else {}
+        last_raw = ing.get("last_manual_refresh_at")
+        last = parse_iso_utc(last_raw) if isinstance(last_raw, str) else None
+        if last is None:
+            return
+        if last.tzinfo is None:
+            last = last.replace(tzinfo=timezone.utc)
+        elapsed = (datetime.now(timezone.utc) - last).total_seconds()
+        if elapsed < cooldown:
+            wait = int(cooldown - elapsed) + 1
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Повторное обновление вручную доступно через {wait} с.",
+            )
+
+    def _record_manual_refresh(self, project_id: int) -> None:
+        project = self.projects.get_by_id(project_id)
+        if not project:
+            return
+        settings = dict(project.settings or {})
+        ing = dict(settings.get("ingestion") or {})
+        ing["last_manual_refresh_at"] = datetime.now(timezone.utc).isoformat()
+        settings["ingestion"] = ing
+        self.projects.update(project, ProjectUpdate(settings=settings))
+
+    def refresh_project(self, project_id: int, *, trigger: str = "auto") -> dict:
         """Force-ingest all sources for a project. Skips cron check."""
+        if trigger == "manual":
+            self._ensure_manual_refresh_allowed(project_id)
+
         sources = self.sources.list_by_project(project_id)
         if not sources:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No sources for this project")
@@ -108,9 +153,16 @@ class IngestionService:
                 self.ingestion.set_job_failed(job, error=str(exc))
                 errors.append(f"{source.title}: {exc}")
 
+        if trigger == "manual":
+            self._record_manual_refresh(project_id)
+
+        n_ok = len(sources) - len(errors)
+
         return {
             "project_id": project_id,
             "sources_processed": len(sources),
+            "sources_succeeded": n_ok,
+            "sources_failed": len(errors),
             "total_chunks": total_chunks,
             "errors": errors,
         }

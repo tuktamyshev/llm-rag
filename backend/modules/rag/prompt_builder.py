@@ -14,15 +14,15 @@ def build_rag_prompt(
     """
     Build a grounded RAG prompt with:
     - conversation history (for multi-turn context)
-    - retrieved context chunks with source attribution
-    - explicit instructions to stay faithful to the context
+    - retrieved context chunks (numbered for ordering only)
+    - explicit instructions to stay faithful to the context without leaking retrieval metadata
     """
     sections: list[str] = []
 
     sections.append(
         "Instructions:\n"
         "- Answer the question using ONLY the provided context.\n"
-        "- Cite sources by their number [1], [2], etc.\n"
+        "- Do not mention chunk IDs, source IDs, scores, or citation markers like [1] — answer in plain prose.\n"
         "- If the context does not contain enough information, say so explicitly.\n"
         "- Be concise and precise."
     )
@@ -42,7 +42,7 @@ def build_rag_prompt(
     else:
         context_items: list[str] = []
         for idx, chunk in enumerate(chunks, start=1):
-            header = f"[{idx}] (source_id={chunk.source_id}, chunk_id={chunk.chunk_id}, relevance={chunk.score:.4f})"
+            header = f"[{idx}]"
             context_items.append(f"{header}\n{chunk.content}")
         context_block = "\n\n".join(context_items)
 

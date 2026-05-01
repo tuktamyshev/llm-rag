@@ -15,7 +15,7 @@ export type Project = {
 export type Source = {
   id: number;
   project_id: number;
-  source_type: "web" | "telegram";
+  source_type: "web" | "telegram" | "file";
   title: string;
   external_id: string | null;
   uri: string | null;

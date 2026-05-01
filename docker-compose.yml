@@ -29,6 +29,12 @@ services:
       TELEGRAM_SESSION_NAME: ${TELEGRAM_SESSION_NAME:-llm_rag_session}
       TELEGRAM_MESSAGE_LIMIT: ${TELEGRAM_MESSAGE_LIMIT:-200}
       TELEGRAM_DAYS_BACK: ${TELEGRAM_DAYS_BACK:-30}
+      TELEGRAM_SESSION_DIR: /data/telegram_session
+      TELEGRAM_PROXY: ${TELEGRAM_PROXY:-}
+      TELEGRAM_CONNECTION_RETRIES: ${TELEGRAM_CONNECTION_RETRIES:-15}
+      TELEGRAM_TIMEOUT_SEC: ${TELEGRAM_TIMEOUT_SEC:-25}
+    volumes:
+      - telegram_session:/data/telegram_session
     restart: unless-stopped
 
   frontend:
@@ -92,3 +98,4 @@ services:
 volumes:
   postgres_data:
   qdrant_data:
+  telegram_session:
