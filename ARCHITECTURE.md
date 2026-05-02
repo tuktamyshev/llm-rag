@@ -232,15 +232,7 @@ Rules:
 
 # 🧪 EVALUATION LAYER (RAGAS)
 
-RAGAS is used for offline evaluation only.
-
-It measures:
-- faithfulness
-- answer relevancy
-- context precision
-- context recall
-
-It is NOT part of runtime system.
+RAGAS scores answers against retrieved context and `ground_truth` (faithfulness, answer relevancy, context precision, context recall). The same logic runs from the **CLI** (`evaluation/ragas/run_eval.py`) or from **optional HTTP** endpoints under `/api/v1/evaluation/` (`ragas`, `ragas-compare`). The compare endpoint, **per JSONL line**, creates an **ephemeral project**, ingests that line’s **`contexts`** into the vector index, runs the **RAG pipeline** (retrieve + LLM), **deletes** the project and vectors, and in parallel builds **no-RAG** answers (direct LLM, no documents). RAGAS runs on both branches (`rag` / `no_rag`, `rag_answers` / `no_rag_answers`). Ephemeral projects are owned by the user id from **`RAGAS_COMPARE_USER_ID`** (default `1`). These calls are not on the interactive chat hot path.
 
 ---
 

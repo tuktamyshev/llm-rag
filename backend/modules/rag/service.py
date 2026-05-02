@@ -32,6 +32,7 @@ class RAGService:
         history: list[dict] | None = None,
         *,
         project_prompt: str | None = None,
+        skip_log: bool = False,
     ) -> AskRAGResponse:
         pp = project_prompt
         if pp is None:
@@ -60,12 +61,13 @@ class RAGService:
             )
         except RuntimeError as exc:
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
-        self.logs.create_log(
-            project_id=payload.project_id,
-            question=payload.query,
-            retrieved_context=enriched,
-            answer=answer,
-        )
+        if not skip_log:
+            self.logs.create_log(
+                project_id=payload.project_id,
+                question=payload.query,
+                retrieved_context=enriched,
+                answer=answer,
+            )
         return AskRAGResponse(answer=answer, context_chunks=enriched)
 
     def _attach_source_titles(self, chunks: list[RetrievedChunk]) -> list[RetrievedChunk]:

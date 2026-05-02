@@ -56,3 +56,39 @@ export type ChatResponse = {
   answer: string;
   sources?: string[];
 };
+
+export type RagasEvaluateResponse = {
+  samples_count: number;
+  avg_faithfulness: number;
+  avg_relevancy: number;
+  avg_context_precision: number;
+  avg_context_recall: number;
+  raw_scores?: Record<string, number[]> | null;
+  error?: string | null;
+  models?: Record<string, string>;
+};
+
+export type RagasMetricSummary = {
+  samples_count: number;
+  avg_faithfulness: number;
+  avg_relevancy: number;
+  avg_context_precision: number;
+  avg_context_recall: number;
+  raw_scores?: Record<string, number[]> | null;
+  error?: string | null;
+};
+
+export type RagasCompareResponse = {
+  samples_count: number;
+  rag: RagasMetricSummary;
+  no_rag: RagasMetricSummary;
+  questions: string[];
+  rag_answers: string[];
+  no_rag_answers: string[];
+  error?: string | null;
+  models?: Record<string, string>;
+};
+
+export type RagasModelsEnvelope = {
+  models: Record<string, string>;
+};

@@ -38,3 +38,4 @@ python-docx
 # Evaluation (RAGAS)
 ragas
 langchain-openai
+langchain-community

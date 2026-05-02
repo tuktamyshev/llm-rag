@@ -3,6 +3,9 @@ import type {
   ChatResponse,
   IngestionJob,
   Project,
+  RagasCompareResponse,
+  RagasEvaluateResponse,
+  RagasModelsEnvelope,
   Source,
   SourceCreated,
   User,
@@ -166,5 +169,23 @@ export const api = {
 
   chat(projectId: number, message: string) {
     return request<ChatResponse>(`/chat/${projectId}`, json({ message, top_k: 5 }));
+  },
+
+  getRagasModels() {
+    return request<RagasModelsEnvelope>("/evaluation/ragas-models");
+  },
+
+  /** POST /evaluation/ragas — долгий запрос (LLM-судья RAGAS). */
+  runRagasEvaluate(jsonl: string) {
+    return request<RagasEvaluateResponse>("/evaluation/ragas", json({ jsonl }));
+  },
+
+  /**
+   * RAGAS-сравнение: временный индекс по contexts из JSONL, RAG vs прямой LLM (эталон ground_truth).
+   */
+  runRagasCompare(jsonl: string, opts?: { topK?: number }) {
+    const body: Record<string, unknown> = { jsonl };
+    if (opts?.topK != null) body.top_k = opts.topK;
+    return request<RagasCompareResponse>("/evaluation/ragas-compare", json(body));
   },
 };

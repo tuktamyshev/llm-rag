@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 import { api } from "./api";
 import type { ProjectStats, RefreshResult } from "./api";
 import LoginPage from "./LoginPage";
+import RagasEvalPanel from "./RagasEvalPanel";
+import SideTabBar, { type SideTab } from "./SideTabBar";
 import SourcesPanel from "./SourcesPanel";
 import type { ChatMessage, Project, User } from "./types";
 
@@ -53,7 +55,7 @@ export default function App() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
 
-  const [sideTab, setSideTab] = useState<"projects" | "sources">("projects");
+  const [sideTab, setSideTab] = useState<SideTab>("projects");
 
   const [stats, setStats] = useState<ProjectStats | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -419,6 +421,10 @@ export default function App() {
   return (
     <>
     <div className="layout">
+      <div className="mobile-nav-wrap">
+        <SideTabBar value={sideTab} onChange={setSideTab} />
+      </div>
+
       <aside className="sidebar">
         <div className="sidebar-top">
           <h1>Платформа RAG</h1>
@@ -428,14 +434,7 @@ export default function App() {
           </div>
         </div>
 
-        <div className="side-tabs">
-          <button className={sideTab === "projects" ? "active" : ""} onClick={() => setSideTab("projects")}>
-            Проекты
-          </button>
-          <button className={sideTab === "sources" ? "active" : ""} onClick={() => setSideTab("sources")}>
-            Источники
-          </button>
-        </div>
+        <SideTabBar value={sideTab} onChange={setSideTab} />
 
         {sideTab === "projects" && (
           <div className="side-content">
@@ -520,15 +519,35 @@ export default function App() {
         {sideTab === "sources" && !projectId && (
           <p className="muted pad">Сначала выберите проект</p>
         )}
+
+        {sideTab === "ragas" && (
+          <div className="side-content">
+            <p className="muted pad">Форма оценки открыта справа во всю ширину.</p>
+          </div>
+        )}
       </aside>
 
-      <main className="chat-area">
+      <main className={`chat-area${sideTab === "ragas" ? " chat-area--ragas" : ""}`}>
         <header className="chat-header">
           <div className="header-row">
-            <div>
-              <h2>{project?.name ?? "Выберите проект"}</h2>
+            <div className="header-title-row">
+              <h2>
+                {sideTab === "ragas"
+                  ? "Оценка RAGAS"
+                  : project?.name ?? "Выберите проект"}
+              </h2>
+              {sideTab !== "ragas" && (
+                <button type="button" className="btn-ragas-inline" onClick={() => setSideTab("ragas")}>
+                  Оценка RAGAS
+                </button>
+              )}
+              {sideTab === "ragas" && (
+                <button type="button" className="btn-ragas-inline" onClick={() => setSideTab("projects")}>
+                  К проектам
+                </button>
+              )}
             </div>
-            {projectId && (
+            {sideTab !== "ragas" && projectId && (
               <div className="header-toolbar" ref={scheduleToolbarRef}>
                 <div className="header-actions">
                   <button
@@ -558,7 +577,7 @@ export default function App() {
             )}
           </div>
 
-          {projectId && stats && (
+          {sideTab !== "ragas" && projectId && stats && (
             <div className="status-bar">
               <div className="stat">
                 <span className={`dot${stats.chunks_count > 0 ? " green" : " gray"}`} />
@@ -578,7 +597,7 @@ export default function App() {
             </div>
           )}
 
-          {lastRefresh && (
+          {sideTab !== "ragas" && lastRefresh && (
             <div
               className={`ingestion-result${(lastRefresh.errors?.length ?? 0) ? " ingestion-result--errors" : ""}`}
               role={lastRefresh.errors?.length ? "alert" : "status"}
@@ -607,6 +626,10 @@ export default function App() {
 
         </header>
 
+        {sideTab === "ragas" ? (
+          <RagasEvalPanel />
+        ) : (
+        <>
         <div className="messages-scroll">
           <div className="messages">
             {messages.length === 0 && (
@@ -658,6 +681,8 @@ export default function App() {
             {sending ? "…" : "Отправить"}
           </button>
         </form>
+        </>
+        )}
       </main>
     </div>
     {schedulePopover}

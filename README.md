@@ -31,7 +31,7 @@
 - **Инжест**: сбор текста → очистка → рекурсивное чанкование → эмбеддинги → запись в Qdrant.
 - **Чат с RAG**: история последних реплик в промпте, ответ с перечислением источников (chunk/source/score).
 - **Переранжирование**: из векторного поиска берётся `top_k × RERANK_FETCH_MULTIPLIER` кандидатов, затем отбор **cross-encoder**.
-- **Оценка**: скрипт `evaluation/ragas/run_eval.py` и библиотека **ragas** (метрики на основе LLM и эмбеддингов).
+- **Оценка**: скрипт `evaluation/ragas/run_eval.py` и библиотека **ragas** (метрики на основе LLM и эмбеддингов); запуск тех же метрик из UI (вкладка **RAGAS**).
 
 Интерфейсы основного приложения и демо-примера ориентированы на **русский язык** (подписи, подсказки, сообщения об ошибках в UI).
 
@@ -251,6 +251,7 @@ make migration m="описание изменений"
 | Инжест | `/ingestion/...` (обновление проекта, статистика) |
 | RAG | `/rag/...` |
 | Чат | `POST /chat/{project_id}`, `GET /chat/{project_id}/history` |
+| Оценка RAGAS | `GET /evaluation/ragas-models`, `POST /evaluation/ragas`, `POST /evaluation/ragas-compare` (сравнение: `jsonl`, опционально `top_k`; временные проекты — см. раздел RAGAS) |
 
 ### Пример запроса чата
 
@@ -306,11 +307,15 @@ make migration m="описание изменений"
 python -m evaluation.ragas.run_eval --dataset evaluation/sample_dataset.jsonl --output evaluation/results.json
 ```
 
+То же можно сделать из **веб-интерфейса**: вкладка **RAGAS** → «Только RAGAS» (`POST /api/v1/evaluation/ragas`, полный JSONL) или сравнение **с RAG vs без RAG** (`POST /api/v1/evaluation/ragas-compare`, тело `{"jsonl":"…","top_k":5}`): для **каждой** строки сервер создаёт **временный проект**, индексирует **`contexts`** из этой строки, выполняет **retrieval + LLM**, затем **удаляет** проект и связанные данные; параллельно считается ответ **того же LLM без документов**; RAGAS по обеим веткам к **`ground_truth`**. Владелец временных проектов в БД — пользователь с id из **`RAGAS_COMPARE_USER_ID`** (по умолчанию **1**); пользователь должен существовать. Примеры: `frontend/public/ragas-sample.jsonl`, `ragas-ru-*.jsonl`. Бэкенд локально — с `PYTHONPATH=..` (см. `Makefile`, цель `backend`).
+
 Формат **JSONL** (одна JSON-строка на пример):
 
 ```json
 {"question": "…", "contexts": ["…"], "ground_truth": "…", "answer": "…"}
 ```
+
+Для **`ragas-compare`** в каждой строке JSONL нужны **`question`**, **`ground_truth`** и **непустой список `contexts`** (по ним поднимается временный индекс для ветки с RAG). Поле **`answer`** не используется.
 
 Метрики настраиваются в `evaluation/ragas/metrics.py` (библиотека **ragas**; совместимость с версией `ragas` проверяйте при обновлении зависимостей).
 
