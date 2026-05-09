@@ -193,9 +193,13 @@ npm run dev
 | `DATABASE_URL` | Строка SQLAlchemy для Postgres, например `postgresql+psycopg2://user:pass@host:5432/llm_rag`. В Docker Compose для бэкенда хоста используется порт **5433**. |
 | `QDRANT_HOST`, `QDRANT_PORT` | Хост и порт Qdrant. |
 | `EMBEDDING_MODEL` | Модель для эмбеддингов, по умолчанию `ai-sage/Giga-Embeddings-instruct`. |
+| `EMBEDDING_DEVICE` | `auto` (по умолчанию) / `cpu` / `cuda` / `cuda:0`. При `auto` — `cuda` если `torch.cuda.is_available()`, иначе `cpu`. В логах backend печатается строка `Embedding device: requested=… resolved=… cuda_available=…` — по ней проверяйте, что GPU действительно используется. |
+| `EMBEDDING_BATCH_SIZE` | Размер батча для `model.encode` (по умолчанию `64`). На GPU имеет смысл увеличить. |
 | `RERANK_ENABLED` | `true` / `false` — включить кросс-энкодер. |
 | `RERANKER_MODEL` | Имя модели cross-encoder в Hugging Face. |
+| `RERANKER_DEVICE` | Device для cross-encoder; по умолчанию наследует `EMBEDDING_DEVICE`. |
 | `RERANK_FETCH_MULTIPLIER` | Сколько кандидатов запрашивать у Qdrant до rerank: `top_k × множитель`. |
+| `RAGAS_COMPARE_USER_ID` | id пользователя в БД, от имени которого создаются временные проекты для RAGAS-сравнения (по умолчанию `1`). Этот пользователь должен существовать. |
 | `TELEGRAM_API_ID`, `TELEGRAM_API_HASH` | С [my.telegram.org](https://my.telegram.org) для инжеста Telegram. |
 | `TELEGRAM_SESSION_NAME`, `TELEGRAM_MESSAGE_LIMIT`, `TELEGRAM_DAYS_BACK` | Сессия Telethon и лимиты сообщений. |
 | `VITE_API_URL`, `VITE_RAG_API_URL`, `VITE_PROJECT_ID` | Для фронтендов (Vite): базовый URL API и ID проекта для демо. |
@@ -251,7 +255,7 @@ make migration m="описание изменений"
 | Инжест | `/ingestion/...` (обновление проекта, статистика) |
 | RAG | `/rag/...` |
 | Чат | `POST /chat/{project_id}`, `GET /chat/{project_id}/history` |
-| Оценка RAGAS | `GET /evaluation/ragas-models`, `POST /evaluation/ragas`, `POST /evaluation/ragas-compare` (сравнение: `jsonl`, опционально `top_k`; временные проекты — см. раздел RAGAS) |
+| Оценка RAGAS | `GET /evaluation/ragas-models`, `POST /evaluation/ragas`, `POST /evaluation/ragas-compare` (сравнение: `jsonl`, опционально `top_k`; временные проекты — см. раздел RAGAS), `POST /evaluation/ragas-compare-urls` (`urls`+`jsonl`: тот же compare, но временный индекс собирается из переданных URL) |
 
 ### Пример запроса чата
 
@@ -307,7 +311,28 @@ make migration m="описание изменений"
 python -m evaluation.ragas.run_eval --dataset evaluation/sample_dataset.jsonl --output evaluation/results.json
 ```
 
-То же можно сделать из **веб-интерфейса**: вкладка **RAGAS** → «Только RAGAS» (`POST /api/v1/evaluation/ragas`, полный JSONL) или сравнение **с RAG vs без RAG** (`POST /api/v1/evaluation/ragas-compare`, тело `{"jsonl":"…","top_k":5}`): для **каждой** строки сервер создаёт **временный проект**, индексирует **`contexts`** из этой строки, выполняет **retrieval + LLM**, затем **удаляет** проект и связанные данные; параллельно считается ответ **того же LLM без документов**; RAGAS по обеим веткам к **`ground_truth`**. Владелец временных проектов в БД — пользователь с id из **`RAGAS_COMPARE_USER_ID`** (по умолчанию **1**); пользователь должен существовать. Примеры: `frontend/public/ragas-sample.jsonl`, `ragas-ru-*.jsonl`. Бэкенд локально — с `PYTHONPATH=..` (см. `Makefile`, цель `backend`).
+То же можно сделать из **веб-интерфейса**: вкладка **RAGAS** → «Только RAGAS» (`POST /api/v1/evaluation/ragas`, полный JSONL) или **сравнение трёх веток** (`POST /api/v1/evaluation/ragas-compare`, тело `{"jsonl":"…","top_k":5}`):
+
+1. **С RAG (standard)** — для каждой строки JSONL создаётся временный проект, `contexts` из строки чистится (`clean_text`) и режется рекурсивным сплиттером, эмбеддится, индексируется в Qdrant, далее retrieval + LLM по проекту.
+2. **С RAG (raw)** — то же, но без очистки и с **наивным чанкованием** (фиксированное окно без оверлапа): эмулирует «нет предобработки».
+3. **Без RAG** — тот же вопрос напрямую в LLM, без документов.
+
+Каждая ветка оценивается RAGAS относительно **`ground_truth`** из строки. Все временные проекты после прогона удаляются (БД и Qdrant). Владелец временных проектов — пользователь из **`RAGAS_COMPARE_USER_ID`** (по умолчанию **`1`**, должен существовать в БД).
+
+В UI выводятся также **тайминги и объёмы**: время «сбор + предобработка» и «векторизация» (по строкам и суммарно), размер сырого текста / после очистки / число и длина чанков, размерность вектора и общий объём векторов (float32). Видно, как «raw‑режим» отличается от стандартного по качеству и по стоимости обработки.
+
+Те же метрики дублируются в **Docker‑логи бэкенда** (`docker compose logs backend`) — на каждый ингест одна структурированная строка вида:
+
+```
+INFO  [modules.ingestion.service] ingest[standard] project=37 source=51 type=web
+  title='…' uri='…' | collect=0.963s clean=0.001s chunk=0.000s vectorize=101.256s total=102.219s
+  | raw_chars=16666 cleaned_chars=16666 chunks=23 chunks_chars=18298
+  | vector_dim=2048 vectors_size=184.0KiB
+```
+
+Логирование покрывает **все пути ингеста**: ручная загрузка/добавление источников, `refresh_project` (включая ручной/автоматический рефреш), фоновые scheduled‑джобы и оба RAGAS‑прогона (`ragas-compare`, `ragas-compare-urls`). По завершении compare в логе появляется ещё одна строка‑сводка на каждый режим (`ragas-compare[…/standard]`, `ragas-compare[…/raw]`).
+
+Примеры JSONL: `frontend/public/ragas-sample.jsonl`, `ragas-ru-*.jsonl`. Бэкенд локально — с `PYTHONPATH=..` (см. `Makefile`, цель `backend`).
 
 Формат **JSONL** (одна JSON-строка на пример):
 
@@ -316,6 +341,17 @@ python -m evaluation.ragas.run_eval --dataset evaluation/sample_dataset.jsonl --
 ```
 
 Для **`ragas-compare`** в каждой строке JSONL нужны **`question`**, **`ground_truth`** и **непустой список `contexts`** (по ним поднимается временный индекс для ветки с RAG). Поле **`answer`** не используется.
+
+#### Свой пример: URL + вопросы
+
+В UI вкладки RAGAS есть раскрывающийся блок **«Свой пример: задайте URL и вопросы»** (HTTP‑аналог — `POST /api/v1/evaluation/ragas-compare-urls`, тело `{"urls":[…], "jsonl":"…", "top_k":5}`). Логика:
+
+- сервер скачивает каждую ссылку как обычный **WEB‑источник** (тот же конвейер, что и в проекте: trafilatura/BeautifulSoup);
+- поднимаются **два временных проекта** (standard и raw), все URL индексируются в каждый;
+- по всем вопросам из JSONL выполняется RAG (по двум проектам) и параллельно «без RAG» (прямой LLM);
+- RAGAS считается к `ground_truth`; временные проекты удаляются.
+
+В JSONL для этого режима достаточно полей `question` и `ground_truth` — `contexts` приходят с указанных URL. Ограничение — до **10 URL** за запуск (можно поменять в схеме).
 
 Метрики настраиваются в `evaluation/ragas/metrics.py` (библиотека **ragas**; совместимость с версией `ragas` проверяйте при обновлении зависимостей).
 
@@ -336,6 +372,26 @@ python -m evaluation.ragas.run_eval --dataset evaluation/sample_dataset.jsonl --
 | `make migrate` | `alembic upgrade head` |
 | `make migration m="текст"` | Автогенерация ревизии Alembic |
 | `make eval` | Подсказка по запуску скрипта оценки |
+
+---
+
+## GPU для эмбеддингов и rerank
+
+По умолчанию `EMBEDDING_DEVICE=auto` — на хостах с CUDA эмбеддинговая модель и cross-encoder поднимаются на GPU автоматически. Чтобы убедиться, что GPU реально используется, после старта backend смотрите логи:
+
+```
+Embedding device: requested=auto resolved=cuda | torch=2.x.x cuda_available=True gpus=1 ['NVIDIA GeForce RTX 4090']
+Loading embedding model … on device=cuda …
+Embedding model loaded – dimension=… device=cuda
+```
+
+Если видите `cuda_available=False` — установлен **CPU‑сборка `torch`** или GPU не проброшен в контейнер.
+
+**Локально без Docker** (`make backend`): достаточно установить torch с поддержкой CUDA для вашей карты, например `pip install torch --index-url https://download.pytorch.org/whl/cu124`, и убедиться, что `python -c "import torch; print(torch.cuda.is_available())"` возвращает `True`.
+
+**Docker**: установите [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html), раскомментируйте блок `deploy.resources.reservations.devices` в `docker-compose.yml` (сервис `backend`) и пересоберите образ с CUDA‑совместимой версией `torch` (либо собирайте поверх образа `nvidia/cuda` / `pytorch/pytorch`). Кэш HuggingFace смонтирован в volume `hf_cache`, чтобы модели не перекачивались при каждом ребилде.
+
+> Примечание: предустановленный `python:3.11-slim` ставит CPU‑версию `torch`. Для GPU соберите свой `Dockerfile.backend` поверх `pytorch/pytorch:*-cuda*-cudnn*-runtime` и не указывайте `torch` в `requirements.txt` (или укажите подходящий wheel).
 
 ---
 

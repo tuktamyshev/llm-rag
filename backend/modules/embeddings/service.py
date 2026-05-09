@@ -16,22 +16,84 @@ logger = logging.getLogger(__name__)
 
 MODEL_NAME = os.getenv("EMBEDDING_MODEL", "ai-sage/Giga-Embeddings-instruct")
 
+# Куда грузить модель: cpu / cuda / cuda:0 / auto.
+# `auto` выбирает cuda при наличии torch.cuda.is_available(), иначе cpu.
+EMBEDDING_DEVICE = os.getenv("EMBEDDING_DEVICE", "auto").strip()
+
+
+def _resolve_device(requested: str) -> str:
+    requested = (requested or "auto").strip().lower()
+    if requested in ("auto", ""):
+        try:
+            import torch
+
+            if torch.cuda.is_available():
+                return "cuda"
+            return "cpu"
+        except Exception:  # pragma: no cover — torch может отсутствовать в тестовой среде
+            logger.warning("torch недоступен — embedding модель будет грузиться на cpu", exc_info=True)
+            return "cpu"
+    return requested
+
+
+_RESOLVED_DEVICE: str | None = None
 _model: SentenceTransformer | None = None
 _model_lock = threading.Lock()
 
 
+def _log_torch_environment(device: str) -> None:
+    """Залогировать, что реально доступно. Помогает диагностировать «всё на CPU»."""
+    try:
+        import torch
+
+        cuda_ok = torch.cuda.is_available()
+        cuda_dev = torch.cuda.device_count() if cuda_ok else 0
+        names = [torch.cuda.get_device_name(i) for i in range(cuda_dev)] if cuda_ok else []
+        logger.info(
+            "Embedding device: requested=%s resolved=%s | torch=%s cuda_available=%s gpus=%d %s",
+            EMBEDDING_DEVICE,
+            device,
+            getattr(torch, "__version__", "?"),
+            cuda_ok,
+            cuda_dev,
+            names,
+        )
+        if device.startswith("cuda") and not cuda_ok:
+            logger.warning(
+                "EMBEDDING_DEVICE=%s, но torch.cuda.is_available()=False. "
+                "Проверьте, что установлен torch с поддержкой CUDA и проброшен GPU в контейнер "
+                "(docker run --gpus all / docker-compose deploy.resources.reservations).",
+                EMBEDDING_DEVICE,
+            )
+    except Exception:  # pragma: no cover
+        logger.warning("Не удалось проверить torch/CUDA окружение", exc_info=True)
+
+
 def _get_model() -> SentenceTransformer:
-    global _model
+    global _model, _RESOLVED_DEVICE
     if _model is None:
         with _model_lock:
             if _model is None:
                 from sentence_transformers import SentenceTransformer
 
-                logger.info("Loading embedding model %s …", MODEL_NAME)
-                _model = SentenceTransformer(MODEL_NAME, trust_remote_code=True)
+                device = _resolve_device(EMBEDDING_DEVICE)
+                _RESOLVED_DEVICE = device
+                _log_torch_environment(device)
+                logger.info("Loading embedding model %s on device=%s …", MODEL_NAME, device)
+                _model = SentenceTransformer(
+                    MODEL_NAME,
+                    trust_remote_code=True,
+                    device=device,
+                )
                 dim_fn = getattr(_model, "get_embedding_dimension", None) or _model.get_sentence_embedding_dimension
-                logger.info("Model loaded – dimension=%d", dim_fn())
+                logger.info("Embedding model loaded – dimension=%d device=%s", dim_fn(), device)
     return _model
+
+
+def get_active_embedding_device() -> str:
+    if _RESOLVED_DEVICE is not None:
+        return _RESOLVED_DEVICE
+    return _resolve_device(EMBEDDING_DEVICE)
 
 
 def embed_text(text: str, **_kwargs: object) -> list[float]:
@@ -41,10 +103,11 @@ def embed_text(text: str, **_kwargs: object) -> list[float]:
     return vector.tolist()
 
 
-def embed_texts(texts: list[str], batch_size: int = 64) -> list[list[float]]:
+def embed_texts(texts: list[str], batch_size: int | None = None) -> list[list[float]]:
     """Embed multiple texts in a single batched call (much faster)."""
     model = _get_model()
-    vectors = model.encode(texts, normalize_embeddings=True, batch_size=batch_size)
+    bs = batch_size if batch_size is not None else int(os.getenv("EMBEDDING_BATCH_SIZE", "64"))
+    vectors = model.encode(texts, normalize_embeddings=True, batch_size=bs)
     return vectors.tolist()
 
 

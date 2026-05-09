@@ -3,13 +3,19 @@ Real Telegram integration using Telethon.
 
 Fetches message history from channels / groups / chats by chat_id or @username.
 Requires TELEGRAM_API_ID and TELEGRAM_API_HASH from https://my.telegram.org.
+
+Авторизация выполняется ОТДЕЛЬНО (`make telegram-login`) и сохраняется в volume
+TELEGRAM_SESSION_DIR. Здесь мы только подключаемся существующей сессией —
+никакого интерактивного ввода телефона/кода в production-пайплайне.
 """
 from __future__ import annotations
 
 import asyncio
 import logging
 import os
+import threading
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 from infrastructure.connectors.telegram_proxy import telethon_client_kwargs
 
@@ -31,10 +37,18 @@ TELEGRAM_MESSAGE_LIMIT = int(os.getenv("TELEGRAM_MESSAGE_LIMIT", "200"))
 TELEGRAM_DAYS_BACK = int(os.getenv("TELEGRAM_DAYS_BACK", "30"))
 
 
+def _session_path() -> str:
+    return os.path.join(
+        os.getenv("TELEGRAM_SESSION_DIR", "/tmp"),
+        TELEGRAM_SESSION,
+    )
+
+
 def fetch_telegram_messages(chat_id: str, title: str) -> str:
     """
     Synchronous wrapper around the async Telethon client.
-    Called from the ingestion pipeline which is sync.
+    Безопасен и из sync (фоновый ингест), и из async-контекста (FastAPI handler).
+    Никогда не использует deprecated `asyncio.get_event_loop()`.
     """
     if not TELEGRAM_API_ID or not TELEGRAM_API_HASH:
         logger.warning(
@@ -46,36 +60,45 @@ def fetch_telegram_messages(chat_id: str, title: str) -> str:
             "(https://my.telegram.org) и перезапустите backend."
         )
 
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                result = pool.submit(_run_async_fetch, chat_id, title).result()
-            return result
-        return loop.run_until_complete(_async_fetch_messages(chat_id, title))
-    except RuntimeError:
-        return asyncio.run(_async_fetch_messages(chat_id, title))
+    if _running_inside_event_loop():
+        result_box: dict[str, Any] = {}
 
+        def _runner() -> None:
+            try:
+                result_box["value"] = asyncio.run(_async_fetch_messages(chat_id, title))
+            except BaseException as exc:  # noqa: BLE001 — пробрасываем в основной поток
+                result_box["error"] = exc
 
-def _run_async_fetch(chat_id: str, title: str) -> str:
+        thread = threading.Thread(target=_runner, daemon=True, name="telegram-fetch")
+        thread.start()
+        thread.join()
+        if "error" in result_box:
+            raise result_box["error"]
+        return str(result_box.get("value", ""))
+
     return asyncio.run(_async_fetch_messages(chat_id, title))
+
+
+def _running_inside_event_loop() -> bool:
+    try:
+        asyncio.get_running_loop()
+        return True
+    except RuntimeError:
+        return False
 
 
 async def _async_fetch_messages(chat_id: str, title: str) -> str:
     """Fetch messages from a Telegram channel/chat using Telethon."""
     try:
-        from telethon import TelegramClient
+        from telethon import TelegramClient, errors  # noqa: F401 — errors используется ниже
     except ImportError:
         logger.error("telethon is not installed — pip install telethon")
         raise TelegramFetchError(
             "Пакет telethon не установлен (pip install telethon)."
         ) from None
 
-    session_path = os.path.join(
-        os.getenv("TELEGRAM_SESSION_DIR", "/tmp"),
-        TELEGRAM_SESSION,
-    )
+    session_path = _session_path()
+    os.makedirs(os.path.dirname(session_path), exist_ok=True)
 
     client = TelegramClient(
         session_path,
@@ -85,7 +108,25 @@ async def _async_fetch_messages(chat_id: str, title: str) -> str:
     )
 
     try:
-        await client.start()
+        try:
+            await client.connect()
+        except OSError as exc:
+            raise TelegramFetchError(
+                f"Не удаётся подключиться к Telegram: {exc}. "
+                "Проверьте сеть/файрвол или задайте TELEGRAM_PROXY (socks5://…)."
+            ) from exc
+
+        if not client.is_connected():
+            raise TelegramFetchError(
+                "Telethon не смог установить соединение с дата-центром Telegram."
+            )
+
+        if not await client.is_user_authorized():
+            raise TelegramFetchError(
+                "Telegram-сессия не авторизована. Выполните одноразовый вход: "
+                "`make telegram-login` (или `docker compose run --rm -it backend "
+                "python /app/backend/scripts/telegram_login.py`)."
+            )
 
         entity = await _resolve_entity(client, chat_id)
         if entity is None:
@@ -94,20 +135,35 @@ async def _async_fetch_messages(chat_id: str, title: str) -> str:
         offset_date = datetime.now(timezone.utc) - timedelta(days=TELEGRAM_DAYS_BACK)
         raw_messages: list[dict] = []
 
-        async for msg in client.iter_messages(
-            entity,
-            limit=TELEGRAM_MESSAGE_LIMIT,
-            offset_date=offset_date,
-            reverse=True,
-        ):
-            if not msg.text:
-                continue
-            raw_messages.append({
-                "id": msg.id,
-                "date": msg.date.isoformat() if msg.date else "",
-                "text": msg.text,
-                "views": getattr(msg, "views", None),
-            })
+        try:
+            async for msg in client.iter_messages(
+                entity,
+                limit=TELEGRAM_MESSAGE_LIMIT,
+                offset_date=offset_date,
+                reverse=True,
+            ):
+                if not getattr(msg, "text", None):
+                    continue
+                raw_messages.append(
+                    {
+                        "id": msg.id,
+                        "date": msg.date.isoformat() if msg.date else "",
+                        "text": msg.text,
+                        "views": getattr(msg, "views", None),
+                    }
+                )
+        except errors.FloodWaitError as exc:
+            raise TelegramFetchError(
+                f"Telegram FloodWait: подождите {exc.seconds} с и повторите запрос."
+            ) from exc
+        except errors.ChannelPrivateError as exc:
+            raise TelegramFetchError(
+                f"Канал/чат «{chat_id}» закрыт или недоступен этому аккаунту."
+            ) from exc
+        except errors.ChatAdminRequiredError as exc:
+            raise TelegramFetchError(
+                f"Для чтения «{chat_id}» нужны права админа этому аккаунту."
+            ) from exc
 
         if not raw_messages:
             raise TelegramFetchError(
@@ -118,7 +174,9 @@ async def _async_fetch_messages(chat_id: str, title: str) -> str:
         blocks = _group_messages_into_blocks(raw_messages, title)
         logger.info(
             "Fetched %d messages from '%s', grouped into %d blocks",
-            len(raw_messages), title, len(blocks),
+            len(raw_messages),
+            title,
+            len(blocks),
         )
         return "\n\n".join(blocks)
 
@@ -128,7 +186,10 @@ async def _async_fetch_messages(chat_id: str, title: str) -> str:
         logger.exception("Telegram fetch error for '%s'", title)
         raise TelegramFetchError(str(exc)) from exc
     finally:
-        await client.disconnect()
+        try:
+            await client.disconnect()
+        except Exception:
+            logger.debug("Telethon disconnect raised", exc_info=True)
 
 
 async def _resolve_entity(client, chat_id: str):

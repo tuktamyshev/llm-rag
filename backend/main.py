@@ -20,6 +20,30 @@ from modules.vectordb import models as vectordb_models  # noqa: F401
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-8s %(name)s — %(message)s")
 
 
+def _ensure_app_logging() -> None:
+    """Гарантируем, что наши INFO‑логи (`modules.*`, `evaluation.*`, `infrastructure.*`)
+    пишутся в Docker‑логи бэкенда даже после того, как uvicorn применил
+    свою `LOGGING_CONFIG` с `disable_existing_loggers=True`.
+    """
+    fmt = logging.Formatter("%(asctime)s %(levelname)-8s %(name)s — %(message)s")
+    root = logging.getLogger()
+    root.disabled = False
+    if root.level == logging.NOTSET or root.level > logging.INFO:
+        root.setLevel(logging.INFO)
+    if not any(isinstance(h, logging.StreamHandler) for h in root.handlers):
+        h = logging.StreamHandler()
+        h.setFormatter(fmt)
+        root.addHandler(h)
+    prefixes = ("modules", "evaluation", "infrastructure", "core")
+    for name in list(logging.root.manager.loggerDict.keys()):
+        if name.startswith(prefixes):
+            log = logging.getLogger(name)
+            log.disabled = False
+            if log.level == logging.NOTSET:
+                log.setLevel(logging.INFO)
+            log.propagate = True
+
+
 def _run_migrations() -> None:
     """Apply pending Alembic migrations on startup."""
     try:
@@ -56,6 +80,11 @@ def create_app() -> FastAPI:
         cors_kw["allow_origin_regex"] = _lan_regex
     app.add_middleware(CORSMiddleware, **cors_kw)
     app.include_router(api_router, prefix="/api/v1")
+
+    @app.on_event("startup")
+    async def _on_startup_logging() -> None:
+        _ensure_app_logging()
+        logging.getLogger("uvicorn.error").info("App logging enabled (modules/evaluation/infrastructure/core → root → stderr)")
 
     @app.exception_handler(Exception)
     async def global_exception_handler(request: Request, exc: Exception):

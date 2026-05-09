@@ -78,13 +78,53 @@ export type RagasMetricSummary = {
   error?: string | null;
 };
 
+export type IngestStageStats = {
+  mode: "standard" | "raw" | string;
+  raw_chars: number;
+  cleaned_chars: number;
+  chunks_count: number;
+  chunks_total_chars: number;
+  vector_dim: number;
+  vector_total_bytes: number;
+  collect_seconds: number;
+  clean_seconds: number;
+  chunk_seconds: number;
+  collect_preproc_seconds: number;
+  vectorize_seconds: number;
+};
+
+export type IngestStageAggregate = {
+  mode: "standard" | "raw" | string;
+  samples_count: number;
+  raw_chars_total: number;
+  cleaned_chars_total: number;
+  chunks_count_total: number;
+  chunks_total_chars_total: number;
+  vector_dim: number;
+  vector_total_bytes: number;
+  collect_preproc_seconds_total: number;
+  vectorize_seconds_total: number;
+  collect_preproc_seconds_avg: number;
+  vectorize_seconds_avg: number;
+};
+
+export type CompareProcessingStats = {
+  standard: IngestStageAggregate;
+  raw: IngestStageAggregate;
+  per_sample_standard: IngestStageStats[];
+  per_sample_raw: IngestStageStats[];
+};
+
 export type RagasCompareResponse = {
   samples_count: number;
   rag: RagasMetricSummary;
+  rag_raw: RagasMetricSummary;
   no_rag: RagasMetricSummary;
   questions: string[];
   rag_answers: string[];
+  rag_raw_answers: string[];
   no_rag_answers: string[];
+  processing?: CompareProcessingStats | null;
   error?: string | null;
   models?: Record<string, string>;
 };

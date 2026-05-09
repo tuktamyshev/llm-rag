@@ -28,14 +28,17 @@ function migrateCompareResult(result: unknown): RagasCompareResponse {
     return {
       samples_count: 0,
       rag: { ...EMPTY_METRIC },
+      rag_raw: { ...EMPTY_METRIC },
       no_rag: { ...EMPTY_METRIC },
       questions: [],
       rag_answers: [],
+      rag_raw_answers: [],
       no_rag_answers: [],
     };
   }
   const r = result as Record<string, unknown>;
   const rag = asMetric(r.rag);
+  const rag_raw = asMetric(r.rag_raw);
   const noRagRaw = r.no_rag != null && typeof r.no_rag === "object" ? r.no_rag : r.baseline;
   const no_rag = asMetric(noRagRaw);
   const no_rag_answers = Array.isArray(r.no_rag_answers)
@@ -43,13 +46,17 @@ function migrateCompareResult(result: unknown): RagasCompareResponse {
     : Array.isArray(r.baseline_answers)
       ? (r.baseline_answers as string[])
       : [];
+  const rag_raw_answers = Array.isArray(r.rag_raw_answers) ? (r.rag_raw_answers as string[]) : [];
   return {
     samples_count: typeof r.samples_count === "number" ? r.samples_count : 0,
     rag,
+    rag_raw,
     no_rag,
     questions: Array.isArray(r.questions) ? (r.questions as string[]) : [],
     rag_answers: Array.isArray(r.rag_answers) ? (r.rag_answers as string[]) : [],
+    rag_raw_answers,
     no_rag_answers,
+    processing: (r.processing as RagasCompareResponse["processing"]) ?? null,
     error: typeof r.error === "string" ? r.error : undefined,
     models: r.models && typeof r.models === "object" && !Array.isArray(r.models) ? (r.models as Record<string, string>) : undefined,
   };

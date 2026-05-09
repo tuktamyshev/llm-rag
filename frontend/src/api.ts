@@ -188,4 +188,14 @@ export const api = {
     if (opts?.topK != null) body.top_k = opts.topK;
     return request<RagasCompareResponse>("/evaluation/ragas-compare", json(body));
   },
+
+  /**
+   * RAGAS-сравнение на «живых» URL: бэкенд скачивает каждую ссылку как WEB-источник во временный
+   * проект (standard и raw), индексирует, потом отвечает на все вопросы из JSONL.
+   */
+  runRagasCompareUrls(urls: string[], jsonl: string, opts?: { topK?: number }) {
+    const body: Record<string, unknown> = { urls, jsonl };
+    if (opts?.topK != null) body.top_k = opts.topK;
+    return request<RagasCompareResponse>("/evaluation/ragas-compare-urls", json(body));
+  },
 };

@@ -21,9 +21,16 @@ services:
       JWT_EXPIRES_SECONDS: ${JWT_EXPIRES_SECONDS:-3600}
       CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://localhost:5175,http://127.0.0.1:5175}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-ai-sage/Giga-Embeddings-instruct}
+      EMBEDDING_DEVICE: ${EMBEDDING_DEVICE:-auto}
+      EMBEDDING_BATCH_SIZE: ${EMBEDDING_BATCH_SIZE:-64}
       RERANK_ENABLED: ${RERANK_ENABLED:-true}
       RERANKER_MODEL: ${RERANKER_MODEL:-cross-encoder/ms-marco-MiniLM-L-6-v2}
+      RERANKER_DEVICE: ${RERANKER_DEVICE:-auto}
       RERANK_FETCH_MULTIPLIER: ${RERANK_FETCH_MULTIPLIER:-3}
+      RAGAS_COMPARE_USER_ID: ${RAGAS_COMPARE_USER_ID:-1}
+      # NVIDIA: переменные пробрасываются, если GPU виден контейнеру
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
+      NVIDIA_DRIVER_CAPABILITIES: ${NVIDIA_DRIVER_CAPABILITIES:-compute,utility}
       TELEGRAM_API_ID: ${TELEGRAM_API_ID:-}
       TELEGRAM_API_HASH: ${TELEGRAM_API_HASH:-}
       TELEGRAM_SESSION_NAME: ${TELEGRAM_SESSION_NAME:-llm_rag_session}
@@ -35,6 +42,16 @@ services:
       TELEGRAM_TIMEOUT_SEC: ${TELEGRAM_TIMEOUT_SEC:-25}
     volumes:
       - telegram_session:/data/telegram_session
+      # Кэш HuggingFace — иначе при каждом ребилде образа модель скачивается заново.
+      - hf_cache:/root/.cache/huggingface
+    # Раскомментируйте блок ниже, если установлен NVIDIA Container Toolkit и нужен GPU.
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
     restart: unless-stopped
 
   frontend:
@@ -99,3 +116,4 @@ volumes:
   postgres_data:
   qdrant_data:
   telegram_session:
+  hf_cache:

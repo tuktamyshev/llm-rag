@@ -937,7 +937,7 @@ body {
 
 .ragas-compare-cols {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 16px;
   margin-top: 12px;
 }
@@ -946,6 +946,67 @@ body {
   .ragas-compare-cols {
     grid-template-columns: 1fr;
   }
+}
+
+.ragas-results-section {
+  margin-top: 22px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--border-light);
+}
+
+.ragas-urls-block {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.ragas-urls-summary {
+  cursor: pointer;
+  font-weight: 600;
+  user-select: none;
+}
+
+.ragas-urls-hint {
+  margin: 8px 0 12px;
+  font-size: 13px;
+}
+
+.ragas-urls-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+@media (max-width: 800px) {
+  .ragas-urls-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ragas-urls-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.ragas-urls-input {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  min-height: 90px;
+}
+
+.ragas-results-subtitle {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 10px;
+}
+
+.ragas-delta-inline {
+  font-size: 12px;
+  margin-left: 4px;
 }
 
 .ragas-metric-block-title {
@@ -961,7 +1022,7 @@ body {
 
 .ragas-delta-table {
   width: 100%;
-  max-width: 420px;
+  max-width: 720px;
   margin-top: 18px;
   border-collapse: collapse;
   font-size: 13px;

@@ -13,9 +13,22 @@ from modules.rag.schemas import RetrievedChunk
 logger = logging.getLogger(__name__)
 
 RERANKER_MODEL = os.getenv("RERANKER_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
+RERANKER_DEVICE = os.getenv("RERANKER_DEVICE", os.getenv("EMBEDDING_DEVICE", "auto")).strip()
 
 _reranker: CrossEncoder | None = None
 _reranker_lock = threading.Lock()
+
+
+def _resolve_reranker_device(requested: str) -> str:
+    requested = (requested or "auto").strip().lower()
+    if requested in ("auto", ""):
+        try:
+            import torch
+
+            return "cuda" if torch.cuda.is_available() else "cpu"
+        except Exception:
+            return "cpu"
+    return requested
 
 
 def _get_reranker() -> CrossEncoder:
@@ -25,9 +38,10 @@ def _get_reranker() -> CrossEncoder:
             if _reranker is None:
                 from sentence_transformers import CrossEncoder
 
-                logger.info("Loading reranker model %s …", RERANKER_MODEL)
-                _reranker = CrossEncoder(RERANKER_MODEL)
-                logger.info("Reranker loaded")
+                device = _resolve_reranker_device(RERANKER_DEVICE)
+                logger.info("Loading reranker model %s on device=%s …", RERANKER_MODEL, device)
+                _reranker = CrossEncoder(RERANKER_MODEL, device=device)
+                logger.info("Reranker loaded (device=%s)", device)
     return _reranker
 
 

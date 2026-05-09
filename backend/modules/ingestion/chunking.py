@@ -5,6 +5,18 @@ import re
 _SEPARATORS = ["\n\n", "\n", ". ", "? ", "! ", "; ", ", ", " "]
 
 
+def naive_chunk_text(text: str, chunk_size: int = 1000) -> list[str]:
+    """
+    Простое окно фиксированной длины без оверлапа и без учёта разделителей —
+    «raw» вариант для сравнения с осмысленным `chunk_text`.
+    """
+    if not text:
+        return []
+    if chunk_size <= 0:
+        raise ValueError("chunk_size must be > 0")
+    return [text[i : i + chunk_size] for i in range(0, len(text), chunk_size) if text[i : i + chunk_size]]
+
+
 def chunk_text(
     text: str,
     chunk_size: int = 1000,
